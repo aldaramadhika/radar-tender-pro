@@ -27,7 +27,7 @@ export default function Home() {
   const [pipeStatus, setPipeStatus] = useState("Cold");
   const [pipeCatatan, setPipeCatatan] = useState("");
 
-  // State Portofolio (Pengalaman)
+  // State Portofolio
   const [editIndexExp, setEditIndexExp] = useState<number | null>(null);
   const [expPerusahaan, setExpPerusahaan] = useState("");
   const [expIndustri, setExpIndustri] = useState("IT & Software");
@@ -49,8 +49,13 @@ export default function Home() {
   const [rekVisit, setRekVisit] = useState("");
   const [rekKet, setRekKet] = useState("");
 
-  // State AI Search
+  // State AI Studio (Ceklist & File Upload)
   const [aiQuery, setAiQuery] = useState("");
+  const [optBedahRks, setOptBedahRks] = useState(false);
+  const [optCekTypo, setOptCekTypo] = useState(false);
+  const [optAnalisaProp, setOptAnalisaProp] = useState(false);
+  const [uploadedFileBase64, setUploadedFileBase64] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [aiSearchResult, setAiSearchResult] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
 
@@ -125,30 +130,79 @@ export default function Home() {
     fetchData();
   };
 
-  const handleSmartSearch = async (e: any) => {
+  // HANDLER UPLOAD FILE KE AI
+  const handleFileUpload = (e: any) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadedFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      setUploadedFileBase64(base64String);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ADVANCED AI REQUEST (DENGAN CEKLIST)
+  const handleAdvancedAI = async (e: any) => {
     e.preventDefault();
-    if (!aiQuery) return;
+    if (!aiQuery && !uploadedFileBase64 && !optBedahRks && !optCekTypo && !optAnalisaProp) {
+      alert("Masukkan perintah atau pilih minimal satu opsi ceklist AI!");
+      return;
+    }
+
     setSearchLoading(true);
     try {
+      let instruksiKhusus = "";
+      if (optBedahRks) instruksiKhusus += "\n- Lakukan BEDAH RKS secara mendalam: Ekstrak ringkasan projek, persyaratan kualifikasi/administrasi wajib, sertifikasi (ISO/TKDN), tenaga ahli yang dibutuhkan, dan strategi menang.";
+      if (optCekTypo) instruksiKhusus += "\n- Lakukan CEK TYPO & PERBAIKAN BAHASA: Periksa tata bahasa, ejaan, dan buat kalimatnya menjadi sangat profesional dan persuasif.";
+      if (optAnalisaProp) instruksiKhusam += "\n- Lakukan ANALISA PROPOSAL: Bandingkan isi dokumen dengan ketentuan KAK untuk memastikan tidak ada syarat krusial yang terlewat.";
+
       const ringkasanData = {
-        perusahaan: dataAll.perusahaan.map((p:any) => `${p.NamaPerusahaan} (${p.Jenis})`),
-        pengalaman: dataAll.pengalaman.map((p:any) => `${p.NamaPekerjaan} di ${p.NamaPerusahaan} (${p.NilaiProjek})`),
-        pipeline: dataAll.pipeline.map((p:any) => `${p.NamaProjek} (${p.NamaPerusahaan} - ${p.EstimasiNilaiProjek})`),
-        rekanan: dataAll.rekanan.map((r:any) => `${r.NamaRekanan} - ${r.ProdukRekanan} (${r.HargaProduk})`),
+        perusahaanTerkait: dataAll.perusahaan.map((p:any) => p.NamaPerusahaan),
+        portofolioKami: dataAll.pengalaman.map((p:any) => `${p.NamaPekerjaan} (${p.NilaiProjek})`)
       };
-      
+
+      const promptText = `Bertindaklah sebagai Konsultan Tender Senior. Konteks data internal kami: ${JSON.stringify(ringkasanData)}. 
+      Pertanyaan/Catatan Pengguna: "${aiQuery}". 
+      Instruksi Tambahan Berdasarkan Ceklist:${instruksiKhusus}`;
+
+      const contentsPart: any[] = [{ text: promptText }];
+      if (uploadedFileBase64) {
+        contentsPart.push({
+          inline_data: {
+            mime_type: "application/pdf",
+            data: uploadedFileBase64
+          }
+        });
+      }
+
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Kamu adalah asisten tender cerdas. Berdasarkan ringkasan data ini: ${JSON.stringify(ringkasanData)}. Jawab pencarian ini dengan singkat & terstruktur: "${aiQuery}"` }] }]
-        })
+        body: JSON.stringify({ contents: [{ parts: contentsPart }] })
       });
+
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);
       setAiSearchResult(json.candidates[0].content.parts[0].text);
+
+      // Simpan riwayat opsional ke Sheet Bedah RKS jika opsi Bedah RKS dicentang
+      if (optBedahRks) {
+        await fetch(API_URL, {
+          method: "POST",
+          body: JSON.stringify({
+            type: "Bedah RKS",
+            namaPerusahaan: "Analisis AI",
+            namaProjek: uploadedFileName || aiQuery.slice(0, 30),
+            hasilBedahRks: json.candidates[0].content.parts[0].text,
+            keterangan: "Otomatis dari AI Studio"
+          })
+        });
+      }
+
     } catch (err: any) {
-      setAiSearchResult(`Gagal mencari: ${err.message}`);
+      setAiSearchResult(`Gagal memproses AI: ${err.message}`);
     }
     setSearchLoading(false);
   };
@@ -173,7 +227,7 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
-  // PIE CHART BERDASARKAN TOTAL NILAI RUPIAH PIPELINE
+  // PIE CHART PIPELINE BERDASARKAN RUPIAH
   let totalNilaiPipeline = 0;
   let hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
 
@@ -232,7 +286,6 @@ export default function Home() {
                 </div>
                 <input type="url" placeholder="URL e-Proc (https://...)" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none transition" value={urlP} onChange={e => setUrlP(e.target.value)} required />
                 
-                {/* Opsi Status Rekanan & Projek */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">Status Rekanan / Vendor:</label>
@@ -317,7 +370,7 @@ export default function Home() {
             </div>
 
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white">
-              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500 mb-6">➕ Tambah Pipeline (Klien Bisa Bebas Diketik)</h2>
+              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500 mb-6">➕ Tambah Pipeline</h2>
               <form onSubmit={handleSavePipeline} className="space-y-5 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
@@ -388,7 +441,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 3: PORTOFOLIO DENGAN HARGA, INDUSTRI & FILTER ================= */}
+        {/* ================= TAB 3: PORTOFOLIO ================= */}
         {tab === "portofolio" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
@@ -413,7 +466,6 @@ export default function Home() {
                </form>
             </div>
 
-            {/* Filter Portofolio */}
             <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100 space-y-3">
               <h3 className="font-extrabold text-indigo-900 text-sm">🔍 Filter Portofolio</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -447,7 +499,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 4: REKANAN DENGAN HARGA & VISIT ================= */}
+        {/* ================= TAB 4: REKANAN ================= */}
         {tab === "rekanan" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
@@ -493,17 +545,70 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 5: AI & REKAMAN ================= */}
+        {/* ================= TAB 5: AI STUDIO (DENGAN UPLOAD PDF & CEKLIST) ================= */}
         {tab === "rekaman" && (
           <div className="space-y-6">
-            <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[2rem] shadow-2xl space-y-4">
-              <h3 className="font-black text-xl text-fuchsia-300">🔍 AI Data Explorer</h3>
-              <p className="text-xs text-indigo-200">Ketik apa saja untuk cari data (misal: "pengalaman bumn", "rekanan security", dll).</p>
-              <form onSubmit={handleSmartSearch} className="flex gap-2">
-                <input type="text" placeholder="Tanya AI..." className="flex-1 p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none" value={aiQuery} onChange={e => setAiQuery(e.target.value)} required />
-                <button type="submit" className="bg-fuchsia-600 text-white px-5 py-4 rounded-2xl font-bold text-xs">{searchLoading ? "Mencari..." : "Cari AI"}</button>
+            <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white p-8 rounded-[2rem] shadow-2xl space-y-6">
+              <div>
+                <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 to-cyan-300">✨ AI Tender Assistant Studio</h3>
+                <p className="text-xs text-indigo-200 mt-1">Unggah dokumen tender (PDF KAK/RKS/Proposal) dan centang kebutuhan analisis Anda di bawah ini.</p>
+              </div>
+
+              <form onSubmit={handleAdvancedAI} className="space-y-5">
+                {/* Kotak Upload File */}
+                <div className="bg-white/10 p-5 rounded-2xl border border-white/20 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="text-xs">
+                    <span className="font-bold block text-fuchsia-300">📁 Unggah Dokumen PDF (Opsional):</span>
+                    <span className="text-slate-300">{uploadedFileName ? `Terpilih: ${uploadedFileName}` : "Belum ada file dipilih"}</span>
+                  </div>
+                  <input type="file" accept="application/pdf" onChange={handleFileUpload} className="text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-fuchsia-600 file:text-white hover:file:bg-fuchsia-700 cursor-pointer" />
+                </div>
+
+                {/* Kotak Pertanyaan / Perintah */}
+                <div>
+                  <label className="block text-xs font-bold text-indigo-200 mb-2">💬 Catatan atau Pertanyaan Tambahan untuk AI:</label>
+                  <textarea 
+                    rows={3}
+                    placeholder="Contoh: Fokuskan pada persyaratan sertifikasi ISO atau periksa apakah ada typo di pasal 4..." 
+                    className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white placeholder-indigo-300 outline-none focus:ring-2 focus:ring-fuchsia-400" 
+                    value={aiQuery} 
+                    onChange={e => setAiQuery(e.target.value)} 
+                  />
+                </div>
+
+                {/* Opsi Ceklist AI */}
+                <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
+                  <span className="text-xs font-bold text-cyan-300 block">⚙️ Pilih Kebutuhan Analisis (Bisa dicentang lebih dari satu):</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <label className="flex items-center gap-2.5 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition">
+                      <input type="checkbox" checked={optBedahRks} onChange={e => setOptBedahRks(e.target.checked)} className="w-4 h-4 accent-fuchsia-500" />
+                      <span className="font-bold">🔍 Bedah RKS</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition">
+                      <input type="checkbox" checked={optCekTypo} onChange={e => setOptCekTypo(e.target.checked)} className="w-4 h-4 accent-fuchsia-500" />
+                      <span className="font-bold">📝 Cek Typo & Bahasa</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition">
+                      <input type="checkbox" checked={optAnalisaProp} onChange={e => setOptAnalisaProp(e.target.checked)} className="w-4 h-4 accent-fuchsia-500" />
+                      <span className="font-bold">⚖️ Analisa Proposal</span>
+                    </label>
+                  </div>
+                </div>
+
+                <button type="submit" className="w-full bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-fuchsia-500/30">
+                  {searchLoading ? "🤖 AI Sedang Menganalisis..." : "✨ Jalankan AI Analisis"}
+                </button>
               </form>
-              {aiSearchResult && <div className="bg-white/10 p-5 rounded-xl text-xs whitespace-pre-line leading-relaxed">{aiSearchResult}</div>}
+
+              {aiSearchResult && (
+                <div className="mt-6 bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 text-xs leading-relaxed text-slate-100 space-y-3">
+                  <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                    <strong className="text-fuchsia-300 text-sm">📋 Hasil Analisis AI:</strong>
+                    <button onClick={() => { navigator.clipboard.writeText(aiSearchResult); alert("Hasil disalin ke clipboard!"); }} className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-[10px] font-bold">Copy Hasil</button>
+                  </div>
+                  <p className="whitespace-pre-line">{aiSearchResult}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -538,7 +643,7 @@ export default function Home() {
           { id: 'pipeline', icon: '🚀', label: 'Pipeline' },
           { id: 'portofolio', icon: '🏆', label: 'Portofolio' },
           { id: 'rekanan', icon: '🤝', label: 'Rekanan' },
-          { id: 'rekaman', icon: '🎙️', label: 'AI' },
+          { id: 'rekaman', icon: '✨', label: 'AI Studio' },
           { id: 'catatan', icon: '📝', label: 'Catatan' }
         ].map((menu) => (
           <button key={menu.id} onClick={() => setTab(menu.id)} className={`flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-full transition ${tab === menu.id ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500'}`}>
