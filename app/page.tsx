@@ -49,16 +49,6 @@ export default function Home() {
   const [rekVisit, setRekVisit] = useState("");
   const [rekKet, setRekKet] = useState("");
 
-  // State Rekaman & AI
-  const [recPerusahaan, setRecPerusahaan] = useState("");
-  const [recTopik, setRecTopik] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<any>(null);
-  const [aiResult, setAiResult] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const mediaRecorderRef = useRef<any>(null);
-  const audioChunksRef = useRef<any[]>([]);
-
   // State AI Search
   const [aiQuery, setAiQuery] = useState("");
   const [aiSearchResult, setAiSearchResult] = useState("");
@@ -94,14 +84,14 @@ export default function Home() {
     e.preventDefault();
     const actionType = editIndexP !== null ? "edit" : "add";
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Daftar Perusahaan", action: actionType, rowIndex: editIndexP, nama: namaP, jenis: jenisP, url: urlP, statusRekanan: statusRek, pernahProjek: pernahProj }) });
-    setNamaP(""); setUrlP(""); setEditIndexP(null); fetchData();
+    setNamaP(""); setUrlP(""); setStatusRek("Belum"); setPernahProj("Belum"); setEditIndexP(null); fetchData();
   };
 
   const handleSavePipeline = async (e: any) => {
     e.preventDefault();
     const actionType = editIndexPipe !== null ? "edit" : "add";
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: actionType, rowIndex: editIndexPipe, namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
-    setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipe(null); fetchData();
+    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipe(null); fetchData();
   };
 
   const handleSavePengalaman = async (e: any) => {
@@ -142,9 +132,9 @@ export default function Home() {
     try {
       const ringkasanData = {
         perusahaan: dataAll.perusahaan.map((p:any) => `${p.NamaPerusahaan} (${p.Jenis})`),
-        pengalaman: dataAll.pengalaman.map((p:any) => `${p.NamaPekerjaan} di ${p.NamaPerusahaan}`),
-        pipeline: dataAll.pipeline.map((p:any) => `${p.NamaProjek} (${p.NamaPerusahaan})`),
-        rekanan: dataAll.rekanan.map((r:any) => `${r.NamaRekanan} - ${r.ProdukRekanan}`),
+        pengalaman: dataAll.pengalaman.map((p:any) => `${p.NamaPekerjaan} di ${p.NamaPerusahaan} (${p.NilaiProjek})`),
+        pipeline: dataAll.pipeline.map((p:any) => `${p.NamaProjek} (${p.NamaPerusahaan} - ${p.EstimasiNilaiProjek})`),
+        rekanan: dataAll.rekanan.map((r:any) => `${r.NamaRekanan} - ${r.ProdukRekanan} (${r.HargaProduk})`),
       };
       
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
@@ -163,52 +153,14 @@ export default function Home() {
     setSearchLoading(false);
   };
 
-  const startRecording = async () => {
-    audioChunksRef.current = [];
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunksRef.current.push(event.data); };
-      recorder.onstop = () => { setAudioBlob(new Blob(audioChunksRef.current, { type: 'audio/webm' })); };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-    } catch (err) { alert("Gagal mengakses mikrofon."); }
+  const parseRupiah = (val: string) => {
+    if (!val) return 0;
+    const clean = val.replace(/[^0-9]/g, "");
+    return Number(clean) || 0;
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      mediaRecorderRef.current.stream.getTracks().forEach((track: any) => track.stop());
-    }
-  };
-
-  const processAudioWithAI = async () => {
-    setAiLoading(true);
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Buat ringkasan meeting profesional untuk klien ${recPerusahaan || "Umum"} dengan topik ${recTopik || "Diskusi"}. Format: 1. Pembahasan Utama, 2. Hambatan, 3. Action Plan.` }] }]
-        })
-      });
-      const json = await res.json();
-      setAiResult(json.candidates[0].content.parts[0].text);
-    } catch (e) { alert("Gagal memproses AI"); }
-    setAiLoading(false);
-  };
-
-  const saveRekamanToSheet = async () => {
-    if (!aiResult) return;
-    await fetch(API_URL, {
-      method: "POST",
-      body: JSON.stringify({ type: "Rekaman", action: "add", namaPerusahaan: recPerusahaan || "Umum", topik: recTopik || "Meeting", hasilRangkuman: aiResult })
-    });
-    alert("Berhasil disimpan!");
-    setAiResult(""); setRecTopik(""); setAudioBlob(null);
-    fetchData();
+  const formatRupiah = (num: number) => {
+    return "Rp " + num.toLocaleString("id-ID");
   };
 
   const filteredPengalaman = dataAll.pengalaman.filter((item: any) => {
@@ -221,15 +173,24 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
-  const totalPipeline = dataAll.pipeline.length || 1; 
-  const hotCount = dataAll.pipeline.filter((p: any) => p.Status === "Hot").length;
-  const warmCount = dataAll.pipeline.filter((p: any) => p.Status === "Warm").length;
-  const coldCount = dataAll.pipeline.filter((p: any) => (!p.Status || p.Status === "Cold" || p.Status === "Aktif")).length;
-  const gagalCount = dataAll.pipeline.filter((p: any) => p.Status === "Gagal").length;
+  // PIE CHART BERDASARKAN TOTAL NILAI RUPIAH PIPELINE
+  let totalNilaiPipeline = 0;
+  let hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
 
-  const hotPct = (hotCount / totalPipeline) * 100;
-  const warmPct = (warmCount / totalPipeline) * 100;
-  const coldPct = (coldCount / totalPipeline) * 100;
+  dataAll.pipeline.forEach((p: any) => {
+    const val = parseRupiah(p.EstimasiNilaiProjek);
+    totalNilaiPipeline += val;
+    const status = p.Status || "Cold";
+    if (status === "Hot") hotVal += val;
+    else if (status === "Warm") warmVal += val;
+    else if (status === "Gagal") gagalVal += val;
+    else coldVal += val;
+  });
+
+  const safeTotal = totalNilaiPipeline || 1;
+  const hotPct = (hotVal / safeTotal) * 100;
+  const warmPct = (warmVal / safeTotal) * 100;
+  const coldPct = (coldVal / safeTotal) * 100;
 
   const pieChartStyle = {
     background: `conic-gradient(
@@ -241,7 +202,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-teal-50 text-slate-800 pb-36 font-sans">
+    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-teal-100 text-slate-800 pb-36 font-sans">
       <header className="w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem]">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           <div>
@@ -257,11 +218,11 @@ export default function Home() {
 
       <div className="w-full max-w-4xl mx-auto px-4 space-y-8">
         
-        {/* TAB 1: DASHBOARD E-PROC */}
+        {/* ================= TAB 1: DASHBOARD E-PROC ================= */}
         {tab === "dashboard" && (
           <div className="space-y-6">
-            <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2rem] shadow-xl border border-white">
-              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-indigo-600 mb-6">{editIndexP !== null ? "✏️ Edit Portal" : "➕ Tambah Portal Baru"}</h2>
+            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white">
+              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-indigo-600 mb-6">{editIndexP !== null ? "✏️ Edit Portal e-Proc" : "➕ Tambah Portal e-Proc Baru"}</h2>
               <form onSubmit={handleSavePerusahaan} className="space-y-5 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <input type="text" placeholder="Nama Perusahaan" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none transition" value={namaP} onChange={e => setNamaP(e.target.value)} required />
@@ -269,7 +230,26 @@ export default function Home() {
                     <option>Pemerintah</option><option>BUMN/BUMD</option><option>Swasta</option>
                   </select>
                 </div>
-                <input type="url" placeholder="URL e-Proc" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none transition" value={urlP} onChange={e => setUrlP(e.target.value)} required />
+                <input type="url" placeholder="URL e-Proc (https://...)" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none transition" value={urlP} onChange={e => setUrlP(e.target.value)} required />
+                
+                {/* Opsi Status Rekanan & Projek */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Status Rekanan / Vendor:</label>
+                    <select value={statusRek} onChange={e => setStatusRek(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl font-medium">
+                      <option value="Belum">Belum Terdaftar</option>
+                      <option value="Sudah">Sudah Rekanan</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Riwayat Projek:</label>
+                    <select value={pernahProj} onChange={e => setPernahProj(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl font-medium">
+                      <option value="Belum">Belum Ada</option>
+                      <option value="Pernah">Sudah Tender / Pernah</option>
+                    </select>
+                  </div>
+                </div>
+
                 <button type="submit" className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-violet-200">{editIndexP !== null ? "Simpan Perubahan" : "Simpan Portal"}</button>
               </form>
             </div>
@@ -286,23 +266,24 @@ export default function Home() {
                 }
 
                 return (
-                <div key={i} className={`bg-white p-6 rounded-[2rem] border shadow-xl transition flex flex-col justify-between gap-4 ${item.StatusUpdate === "NEW" ? 'border-rose-400 ring-4 ring-rose-50' : 'border-slate-100'}`}>
+                <div key={i} className={`bg-white/90 backdrop-blur-md p-6 rounded-[2rem] border shadow-xl transition flex flex-col justify-between gap-4 ${item.StatusUpdate === "NEW" ? 'border-rose-400 ring-4 ring-rose-50' : 'border-white'}`}>
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <h3 className="font-extrabold text-lg text-slate-800 leading-tight">{item.NamaPerusahaan}</h3>
                       <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-gradient-to-r from-fuchsia-100 to-pink-100 text-fuchsia-700">{item.Jenis}</span>
                     </div>
                     <div className="space-y-1 text-xs font-medium text-slate-500">
-                      <p>Status Rekanan: <strong className="text-violet-600">{item.StatusRekanan}</strong></p>
+                      <p>Status Rekanan: <strong className="text-violet-600">{item.StatusRekanan || "Belum"}</strong></p>
+                      <p>Riwayat Projek: <strong className="text-indigo-600">{item.PernahAdaProjek || "Belum"}</strong></p>
                       <p>🕒 Terakhir Klik: <strong className="text-slate-700">{item.LastClicked || "Belum"}</strong></p>
                       <p>📊 Frekuensi: <strong className="text-teal-600">{item.FrekuensiBuka || 0} Kali</strong></p>
                     </div>
                   </div>
                   
-                  <div className="flex flex-col gap-3 pt-4 border-t border-slate-50">
+                  <div className="flex flex-col gap-3 pt-4 border-t border-slate-100">
                     <div className="flex justify-between items-center w-full">
                       <div className="flex gap-3 text-xs font-bold">
-                        <button onClick={() => { setEditIndexP(i); setNamaP(item.NamaPerusahaan); setJenisP(item.Jenis); setUrlP(item.URL); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-violet-600">Edit</button>
+                        <button onClick={() => { setEditIndexP(i); setNamaP(item.NamaPerusahaan); setJenisP(item.Jenis); setUrlP(item.URL); setStatusRek(item.StatusRekanan || "Belum"); setPernahProj(item.PernahAdaProjek || "Belum"); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-violet-600">Edit</button>
                         <button onClick={() => handleDelete("Daftar Perusahaan", i, item.NamaPerusahaan)} className="text-rose-500">Hapus</button>
                       </div>
                       <div>{statusIcon}</div>
@@ -317,36 +298,50 @@ export default function Home() {
           </div>
         )}
 
-        {/* TAB 2: PIPELINE */}
+        {/* ================= TAB 2: PIPELINE ================= */}
         {tab === "pipeline" && (
           <div className="space-y-8">
-            <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-8">
-              <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full shadow-inner flex items-center justify-center shrink-0" style={pieChartStyle}>
-                <div className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-full flex flex-col items-center justify-center shadow-lg">
-                  <span className="text-2xl font-black text-slate-800">{dataAll.pipeline.length}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Total</span>
+            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white flex flex-col md:flex-row items-center gap-8">
+              <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-full shadow-inner flex items-center justify-center shrink-0" style={pieChartStyle}>
+                <div className="w-22 h-22 md:w-26 md:h-26 bg-white rounded-full flex flex-col items-center justify-center shadow-lg p-2 text-center">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Total Nilai</span>
+                  <span className="text-xs md:text-sm font-black text-slate-800 tracking-tight">{formatRupiah(totalNilaiPipeline)}</span>
                 </div>
               </div>
-              <div className="flex-1 grid grid-cols-2 gap-4 w-full">
-                <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl"><p className="text-xs font-bold text-rose-500 uppercase">🔥 Hot</p><h3 className="text-2xl font-black text-rose-700">{hotCount}</h3></div>
-                <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl"><p className="text-xs font-bold text-amber-500 uppercase">☀️ Warm</p><h3 className="text-2xl font-black text-amber-700">{warmCount}</h3></div>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl"><p className="text-xs font-bold text-blue-500 uppercase">❄️ Cold</p><h3 className="text-2xl font-black text-blue-700">{coldCount}</h3></div>
-                <div className="bg-slate-100 border border-slate-200 p-4 rounded-2xl"><p className="text-xs font-bold text-slate-500 uppercase">❌ Gagal</p><h3 className="text-2xl font-black text-slate-700">{gagalCount}</h3></div>
+              <div className="flex-1 grid grid-cols-2 gap-4 w-full text-xs">
+                <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl"><p className="font-bold text-rose-500 uppercase">🔥 Hot Value</p><h3 className="text-sm md:text-base font-black text-rose-700 mt-1">{formatRupiah(hotVal)}</h3></div>
+                <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl"><p className="font-bold text-amber-500 uppercase">☀️ Warm Value</p><h3 className="text-sm md:text-base font-black text-amber-700 mt-1">{formatRupiah(warmVal)}</h3></div>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl"><p className="font-bold text-blue-500 uppercase">❄️ Cold Value</p><h3 className="text-sm md:text-base font-black text-blue-700 mt-1">{formatRupiah(coldVal)}</h3></div>
+                <div className="bg-slate-100 border border-slate-200 p-4 rounded-2xl"><p className="font-bold text-slate-500 uppercase">❌ Gagal Value</p><h3 className="text-sm md:text-base font-black text-slate-700 mt-1">{formatRupiah(gagalVal)}</h3></div>
               </div>
             </div>
 
-            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-xl border border-white">
-              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500 mb-6">➕ Tambah Pipeline</h2>
+            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white">
+              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500 mb-6">➕ Tambah Pipeline (Klien Bisa Bebas Diketik)</h2>
               <form onSubmit={handleSavePipeline} className="space-y-5 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipePerusahaan} onChange={e => setPipePerusahaan(e.target.value)} required>
-                    <option value="">-- Pilih Perusahaan --</option>
-                    {dataAll.perusahaan.map((p: any, i: number) => <option key={i} value={p.NamaPerusahaan}>{p.NamaPerusahaan}</option>)}
-                  </select>
-                  <input type="text" placeholder="Nama Projek" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipeProjek} onChange={e => setPipeProjek(e.target.value)} required />
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Nama Perusahaan / Klien:</label>
+                    <input 
+                      type="text" 
+                      list="daftar-perusahaan" 
+                      placeholder="Pilih atau ketik nama klien bebas..." 
+                      className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500" 
+                      value={pipePerusahaan} 
+                      onChange={e => setPipePerusahaan(e.target.value)} 
+                      required 
+                    />
+                    <datalist id="daftar-perusahaan">
+                      {dataAll.perusahaan.map((p: any, i: number) => <option key={i} value={p.NamaPerusahaan} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Nama Projek / Pengadaan:</label>
+                    <input type="text" placeholder="Contoh: Pengadaan Server" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipeProjek} onChange={e => setPipeProjek(e.target.value)} required />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <input type="text" placeholder="Nilai (Rp)" className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipeNilai} onChange={e => setPipeNilai(e.target.value)} />
+                  <input type="text" placeholder="Estimasi Nilai (Rp)" className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipeNilai} onChange={e => setPipeNilai(e.target.value)} />
                   <input type="date" className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipeTayang} onChange={e => setPipeTayang(e.target.value)} />
                   <select className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" value={pipeTahapan} onChange={e => setPipeTahapan(e.target.value)}>
                     <option>1. Eksplorasi</option><option>3. Penawaran</option><option>5. Tender Tayang</option><option>7. Menang</option>
@@ -380,7 +375,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-xs bg-white/60 p-3 rounded-xl">
-                    <div>💰 Nilai: <strong>{p.EstimasiNilaiProjek || "-"}</strong></div>
+                    <div>💰 Nilai: <strong className="text-emerald-700">{p.EstimasiNilaiProjek || "-"}</strong></div>
                     <div>📅 Tayang: <strong>{p.TanggalEstimasiTayangTender || "-"}</strong></div>
                   </div>
                   {p.LogCatatan && <p className="text-xs bg-white p-3 rounded-xl italic text-slate-600">📝 "{p.LogCatatan}"</p>}
@@ -393,80 +388,144 @@ export default function Home() {
           </div>
         )}
 
-        {/* TAB 3: PORTOFOLIO */}
+        {/* ================= TAB 3: PORTOFOLIO DENGAN HARGA, INDUSTRI & FILTER ================= */}
         {tab === "portofolio" && (
           <div className="space-y-6">
-            <div className="bg-white p-8 rounded-[2rem] shadow-xl border">
-               <h2 className="font-extrabold text-xl text-slate-800 mb-4">➕ Tambah Portofolio</h2>
+            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
+               <h2 className="font-extrabold text-xl text-slate-800 mb-4">➕ Tambah Portofolio Manual</h2>
                <form onSubmit={handleSavePengalaman} className="space-y-4 text-sm">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" placeholder="Nama Klien" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPerusahaan} onChange={e => setExpPerusahaan(e.target.value)} required />
+                    <input type="text" placeholder="Nama Perusahaan Klien" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPerusahaan} onChange={e => setExpPerusahaan(e.target.value)} required />
                     <select className="p-4 bg-slate-50 border rounded-2xl w-full" value={expIndustri} onChange={e => setExpIndustri(e.target.value)}>
                       <option>IT & Software</option><option>Digital Marketing</option><option>Infrastruktur & Jaringan</option><option>Konsultansi & Audit</option><option>Lainnya</option>
                     </select>
                   </div>
-                  <input type="text" placeholder="Judul Projek" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPekerjaan} onChange={e => setExpPekerjaan(e.target.value)} required />
+                  <input type="text" placeholder="Judul / Jenis Pekerjaan" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPekerjaan} onChange={e => setExpPekerjaan(e.target.value)} required />
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    <input type="text" placeholder="Tahun (2026)" className="p-3 bg-slate-50 border rounded-xl" value={expTahun} onChange={e => setExpTahun(e.target.value)} />
+                    <input type="text" placeholder="Lama (3 Bulan)" className="p-3 bg-slate-50 border rounded-xl" value={expLama} onChange={e => setExpLama(e.target.value)} />
+                    <input type="text" placeholder="Nilai Projek (Rp)" className="p-3 bg-slate-50 border rounded-xl" value={expNilai} onChange={e => setExpNilai(e.target.value)} />
+                  </div>
+
+                  <textarea placeholder="Keterangan / Deskripsi Projek..." className="p-4 bg-slate-50 border rounded-2xl w-full" rows={2} value={expKet} onChange={e => setExpKet(e.target.value)} />
                   <button type="submit" className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold shadow">Simpan Portofolio</button>
                </form>
             </div>
-            <div className="space-y-3">
+
+            {/* Filter Portofolio */}
+            <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100 space-y-3">
+              <h3 className="font-extrabold text-indigo-900 text-sm">🔍 Filter Portofolio</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <select className="w-full p-3 bg-white border rounded-xl" value={filterIndustri} onChange={e => setFilterIndustri(e.target.value)}>
+                  <option value="Semua">Semua Industri</option>
+                  <option value="IT & Software">IT & Software</option>
+                  <option value="Digital Marketing">Digital Marketing</option>
+                  <option value="Infrastruktur & Jaringan">Infrastruktur & Jaringan</option>
+                  <option value="Konsultansi & Audit">Konsultansi & Audit</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+                <input type="text" placeholder="Cari keyword (klien / pekerjaan)..." className="w-full p-3 bg-white border rounded-xl" value={filterKeyword} onChange={e => setFilterKeyword(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
               {filteredPengalaman.map((item:any, i:number)=>(
-                <div key={i} className="p-5 bg-white rounded-2xl border shadow flex justify-between items-center">
-                  <div><h4 className="font-bold text-slate-800">{item.NamaPekerjaan}</h4><p className="text-xs text-indigo-600">{item.NamaPerusahaan}</p></div>
-                  <button onClick={() => handleDelete("Pengalaman", i, item.NamaPekerjaan)} className="text-xs text-rose-500 font-bold">Hapus</button>
+                <div key={i} className="p-6 bg-white/90 rounded-3xl border shadow flex flex-col md:flex-row justify-between gap-4">
+                  <div>
+                    <h4 className="font-black text-slate-800 text-base">{item.NamaPekerjaan}</h4>
+                    <p className="text-xs font-bold text-indigo-600 mt-1">{item.NamaPerusahaan} • <span className="bg-indigo-50 px-2 py-0.5 rounded">{item.JenisIndustri}</span></p>
+                    <p className="text-xs text-slate-500 mt-2">Nilai: <strong className="text-emerald-700">{item.NilaiProjek || "-"}</strong> ({item.TahunPelaksanaan}) — Lama: {item.LamaPekerjaan}</p>
+                    {item.Keterangan && <p className="text-xs bg-slate-50 p-2.5 rounded-xl mt-2 text-slate-600">{item.Keterangan}</p>}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs font-bold">
+                    <button onClick={() => handleDelete("Pengalaman", i, item.NamaPekerjaan)} className="text-rose-500">Hapus</button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* TAB 4: REKANAN */}
+        {/* ================= TAB 4: REKANAN DENGAN HARGA & VISIT ================= */}
         {tab === "rekanan" && (
           <div className="space-y-6">
-            <div className="bg-white p-8 rounded-[2rem] shadow-xl border">
-              <h2 className="font-extrabold text-xl text-slate-800 mb-4">➕ Tambah Rekanan</h2>
+            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
+              <h2 className="font-extrabold text-xl text-slate-800 mb-4">➕ Tambah Rekanan / Partner</h2>
               <form onSubmit={handleSaveRekanan} className="space-y-4 text-sm">
-                <input type="text" placeholder="Nama Rekanan" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekNama} onChange={e => setRekNama(e.target.value)} required />
-                <input type="text" placeholder="Produk" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekProduk} onChange={e => setRekProduk(e.target.value)} />
-                <input type="text" placeholder="PIC (Bisa lebih dari 1)" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekPic} onChange={e => setRekPic(e.target.value)} required />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input type="text" placeholder="Nama Rekanan / Partner" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekNama} onChange={e => setRekNama(e.target.value)} required />
+                  <input type="text" placeholder="Produk Rekanan" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekProduk} onChange={e => setRekProduk(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input type="text" placeholder="Harga Produk (Rp)" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekHarga} onChange={e => setRekHarga(e.target.value)} />
+                  <input type="date" placeholder="Terakhir Visit" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekVisit} onChange={e => setRekVisit(e.target.value)} />
+                </div>
+                <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100 space-y-2">
+                  <label className="block text-xs font-bold text-teal-900">👥 Data PIC (Bisa lebih dari 1):</label>
+                  <input type="text" placeholder="Contoh: Budi, Siska" className="w-full p-3 bg-white border rounded-xl text-xs" value={rekPic} onChange={e => setRekPic(e.target.value)} required />
+                  <input type="text" placeholder="No Telp PIC: 0812..., 0813..." className="w-full p-3 bg-white border rounded-xl text-xs" value={rekTelp} onChange={e => setRekTelp(e.target.value)} />
+                </div>
+                <textarea placeholder="Keterangan partner..." className="w-full p-4 bg-slate-50 border rounded-2xl text-xs" rows={2} value={rekKet} onChange={e => setRekKet(e.target.value)} />
                 <button type="submit" className="w-full bg-teal-600 text-white p-4 rounded-2xl font-bold shadow">Simpan Rekanan</button>
               </form>
             </div>
-            <div className="space-y-3">
+
+            <div className="space-y-4">
               {dataAll.rekanan.map((r: any, i: number) => (
-                <div key={i} className="bg-white p-5 rounded-2xl border shadow flex justify-between items-center">
-                  <div><h4 className="font-bold text-slate-800">{r.NamaRekanan}</h4><p className="text-xs text-teal-700">PIC: {r.PIC}</p></div>
-                  <button onClick={() => handleDelete("Rekanan", i, r.NamaRekanan)} className="text-xs text-rose-500 font-bold">Hapus</button>
+                <div key={i} className="bg-white/90 p-6 rounded-[2rem] border shadow space-y-3">
+                  <div className="flex justify-between font-bold text-slate-800 text-base">
+                    <span>{r.NamaRekanan}</span>
+                    <span className="text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full">Produk: {r.ProdukRekanan || "-"}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs bg-slate-50 p-4 rounded-2xl border">
+                    <div>💵 Harga: <strong className="text-emerald-700">{r.HargaProduk || "-"}</strong></div>
+                    <div>📅 Terakhir Visit: <strong>{r.TerakhirVisit || "-"}</strong></div>
+                    <div className="md:col-span-2">👥 PIC: <strong className="text-teal-800">{r.PIC}</strong> | 📞 No: <strong>{r.NoTelpPIC}</strong></div>
+                  </div>
+                  {r.Keterangan && <p className="text-xs text-slate-600 italic">💬 {r.Keterangan}</p>}
+                  <div className="flex justify-end gap-3 text-xs font-bold pt-1">
+                    <button onClick={() => handleDelete("Rekanan", i, r.NamaRekanan)} className="text-rose-500">Hapus</button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* TAB 5: AI & REKAMAN */}
+        {/* ================= TAB 5: AI & REKAMAN ================= */}
         {tab === "rekaman" && (
           <div className="space-y-6">
-            <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[2rem] shadow-xl space-y-4">
+            <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[2rem] shadow-2xl space-y-4">
               <h3 className="font-black text-xl text-fuchsia-300">🔍 AI Data Explorer</h3>
+              <p className="text-xs text-indigo-200">Ketik apa saja untuk cari data (misal: "pengalaman bumn", "rekanan security", dll).</p>
               <form onSubmit={handleSmartSearch} className="flex gap-2">
-                <input type="text" placeholder="Tanya AI (contoh: Klien BUMN)..." className="flex-1 p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none" value={aiQuery} onChange={e => setAiQuery(e.target.value)} required />
-                <button type="submit" className="bg-fuchsia-600 text-white px-5 py-4 rounded-2xl font-bold text-xs">Cari</button>
+                <input type="text" placeholder="Tanya AI..." className="flex-1 p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none" value={aiQuery} onChange={e => setAiQuery(e.target.value)} required />
+                <button type="submit" className="bg-fuchsia-600 text-white px-5 py-4 rounded-2xl font-bold text-xs">{searchLoading ? "Mencari..." : "Cari AI"}</button>
               </form>
-              {aiSearchResult && <div className="bg-white/10 p-4 rounded-xl text-xs whitespace-pre-line">{aiSearchResult}</div>}
+              {aiSearchResult && <div className="bg-white/10 p-5 rounded-xl text-xs whitespace-pre-line leading-relaxed">{aiSearchResult}</div>}
             </div>
           </div>
         )}
 
-        {/* TAB 6: CATATAN */}
+        {/* ================= TAB 6: CATATAN ================= */}
         {tab === "catatan" && (
           <div className="space-y-6">
-            <div className="bg-white p-8 rounded-[2rem] shadow-xl border">
-              <h2 className="font-extrabold text-xl text-slate-800 mb-4">📝 Tulis Catatan</h2>
+            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
+              <h2 className="font-extrabold text-xl text-slate-800 mb-4">📝 Tulis Catatan / Strategi</h2>
               <form onSubmit={handleSaveCatatan} className="space-y-4 text-sm">
                 <input type="text" placeholder="Topik Catatan" className="w-full p-4 bg-slate-50 border rounded-2xl" value={catTopik} onChange={e => setCatTopik(e.target.value)} required />
                 <textarea placeholder="Isi catatan..." className="w-full p-4 bg-slate-50 border rounded-2xl text-xs" rows={3} value={catIsi} onChange={e => setCatIsi(e.target.value)} required />
                 <button type="submit" className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold shadow">Simpan Catatan</button>
               </form>
+            </div>
+            <div className="space-y-3">
+              {dataAll.catatan.map((c: any, i: number) => (
+                <div key={i} className="bg-white/90 p-5 rounded-2xl border shadow space-y-1">
+                  <div className="flex justify-between font-bold text-xs text-indigo-600"><span>{c.Topik} ({c.NamaPerusahaan})</span><span className="text-slate-400">{c.Tanggal}</span></div>
+                  <p className="text-slate-700 text-xs">{c.IsiCatatan}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
