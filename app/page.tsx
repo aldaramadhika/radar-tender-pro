@@ -130,7 +130,6 @@ export default function Home() {
     fetchData();
   };
 
-  // HANDLER UPLOAD FILE KE AI
   const handleFileUpload = (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -143,7 +142,6 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  // ADVANCED AI REQUEST (DENGAN CEKLIST)
   const handleAdvancedAI = async (e: any) => {
     e.preventDefault();
     if (!aiQuery && !uploadedFileBase64 && !optBedahRks && !optCekTypo && !optAnalisaProp) {
@@ -156,7 +154,7 @@ export default function Home() {
       let instruksiKhusus = "";
       if (optBedahRks) instruksiKhusus += "\n- Lakukan BEDAH RKS secara mendalam: Ekstrak ringkasan projek, persyaratan kualifikasi/administrasi wajib, sertifikasi (ISO/TKDN), tenaga ahli yang dibutuhkan, dan strategi menang.";
       if (optCekTypo) instruksiKhusus += "\n- Lakukan CEK TYPO & PERBAIKAN BAHASA: Periksa tata bahasa, ejaan, dan buat kalimatnya menjadi sangat profesional dan persuasif.";
-      if (optAnalisaProp) instruksiKhusam += "\n- Lakukan ANALISA PROPOSAL: Bandingkan isi dokumen dengan ketentuan KAK untuk memastikan tidak ada syarat krusial yang terlewat.";
+      if (optAnalisaProp) instruksiKhusus += "\n- Lakukan ANALISA PROPOSAL: Bandingkan isi dokumen dengan ketentuan KAK untuk memastikan tidak ada syarat krusial yang terlewat.";
 
       const ringkasanData = {
         perusahaanTerkait: dataAll.perusahaan.map((p:any) => p.NamaPerusahaan),
@@ -187,7 +185,6 @@ export default function Home() {
       if (json.error) throw new Error(json.error.message);
       setAiSearchResult(json.candidates[0].content.parts[0].text);
 
-      // Simpan riwayat opsional ke Sheet Bedah RKS jika opsi Bedah RKS dicentang
       if (optBedahRks) {
         await fetch(API_URL, {
           method: "POST",
@@ -227,7 +224,6 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
-  // PIE CHART PIPELINE BERDASARKAN RUPIAH
   let totalNilaiPipeline = 0;
   let hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
 
@@ -272,7 +268,6 @@ export default function Home() {
 
       <div className="w-full max-w-4xl mx-auto px-4 space-y-8">
         
-        {/* ================= TAB 1: DASHBOARD E-PROC ================= */}
         {tab === "dashboard" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white">
@@ -351,7 +346,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 2: PIPELINE ================= */}
         {tab === "pipeline" && (
           <div className="space-y-8">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-white flex flex-col md:flex-row items-center gap-8">
@@ -441,7 +435,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 3: PORTOFOLIO ================= */}
         {tab === "portofolio" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
@@ -499,7 +492,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 4: REKANAN ================= */}
         {tab === "rekanan" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
@@ -545,7 +537,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 5: AI STUDIO (DENGAN UPLOAD PDF & CEKLIST) ================= */}
         {tab === "rekaman" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white p-8 rounded-[2rem] shadow-2xl space-y-6">
@@ -555,7 +546,6 @@ export default function Home() {
               </div>
 
               <form onSubmit={handleAdvancedAI} className="space-y-5">
-                {/* Kotak Upload File */}
                 <div className="bg-white/10 p-5 rounded-2xl border border-white/20 flex flex-col md:flex-row items-center justify-between gap-4">
                   <div className="text-xs">
                     <span className="font-bold block text-fuchsia-300">📁 Unggah Dokumen PDF (Opsional):</span>
@@ -564,7 +554,6 @@ export default function Home() {
                   <input type="file" accept="application/pdf" onChange={handleFileUpload} className="text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-fuchsia-600 file:text-white hover:file:bg-fuchsia-700 cursor-pointer" />
                 </div>
 
-                {/* Kotak Pertanyaan / Perintah */}
                 <div>
                   <label className="block text-xs font-bold text-indigo-200 mb-2">💬 Catatan atau Pertanyaan Tambahan untuk AI:</label>
                   <textarea 
@@ -576,7 +565,6 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Opsi Ceklist AI */}
                 <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
                   <span className="text-xs font-bold text-cyan-300 block">⚙️ Pilih Kebutuhan Analisis (Bisa dicentang lebih dari satu):</span>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
@@ -613,7 +601,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ================= TAB 6: CATATAN ================= */}
         {tab === "catatan" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border">
