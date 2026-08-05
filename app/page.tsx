@@ -175,8 +175,8 @@ export default function Home() {
         });
       }
 
-      // Menggunakan model gemini-2.5-flash terbaru yang aktif
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      // Menggunakan model terbaru gemini-3.6-flash
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: contentsPart }] })
@@ -567,7 +567,7 @@ export default function Home() {
                 </div>
 
                 <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
-                  <span className="text-xs font-bold text-cyan-300 block">⚙️ Pilih Kebutuhan Analisis (Bisa dicentang lebih dari satu):</span>
+                  <span className="font-bold block text-cyan-300">⚙️ Pilih Kebutuhan Analisis (Bisa dicentang lebih dari satu):</span>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                     <label className="flex items-center gap-2.5 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition">
                       <input type="checkbox" checked={optBedahRks} onChange={e => setOptBedahRks(e.target.checked)} className="w-4 h-4 accent-fuchsia-500" />
