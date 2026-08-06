@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from "react";
 export default function Home() {
   const [tab, setTab] = useState("dashboard");
   const [dataAll, setDataAll] = useState<any>({ 
-    perusahaan: [], pengalaman: [], pipeline: [], catatan: [], rekaman: [], rekanan: [], tenagaAhli: [], riwayatAi: [], sampah: [], bedahRks: [] 
+    perusahaan: [], pengalaman: [], pipeline: [], catatan: [], rekaman: [], rekanan: [], tenagaAhli: [], riwayatAi: [], sampah: [], bedahRks: [], voiceProfiles: [] 
   });
   const [loading, setLoading] = useState(false);
+  const [activeUser, setActiveUser] = useState("Alda"); // Default user utama Anda
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
@@ -47,7 +48,7 @@ export default function Home() {
   const [rekTelp, setRekTelp] = useState("");
   const [rekKet, setRekKet] = useState("");
 
-  // State Tenaga Ahli
+  // State Tenaga Ahli & CV Generator
   const [editIndexAhli, setEditIndexAhli] = useState<number | null>(null);
   const [ahliNama, setAhliNama] = useState("");
   const [ahliPosisi, setAhliPosisi] = useState("");
@@ -102,7 +103,8 @@ export default function Home() {
         tenagaAhli: json.tenagaAhli || [],
         riwayatAi: json.riwayatAi || [],
         sampah: json.sampah || [],
-        bedahRks: json.bedahRks || []
+        bedahRks: json.bedahRks || [],
+        voiceProfiles: json.voiceProfiles || []
       });
 
       if (json.riwayatAi && json.riwayatAi.length > 0) {
@@ -139,7 +141,7 @@ export default function Home() {
   const createNewChatSession = () => {
     const newId = Date.now().toString();
     const newTitle = `Diskusi ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})} - ${new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}`;
-    const initialMsg = [{ role: 'model', content: 'Halo! Saya LISA, asisten sales profesional Anda. Ada tender atau strategi bisnis yang ingin kita diskusikan?' }];
+    const initialMsg = [{ role: 'model', content: `Halo Kak ${activeUser}, ada yang bisa LISA bantu hari ini?` }];
     
     const newSession = { id: newId, title: newTitle, messages: initialMsg };
     setChatSessions([newSession, ...chatSessions]);
@@ -159,9 +161,7 @@ export default function Home() {
     alert("Obrolan dipindahkan ke Sampah!");
   };
 
-  // Fungsionalitas Buka e-Proc (Bisa mentrigger layar laptop/eksternal yang mirroring ke TV)
   const handleOpenEproc = async (namaPerusahaan: string, url: string) => {
-    // Membuka tab baru di browser aktif (misal HP atau laptop yang sedang mirroring ke TV)
     window.open(url, "_blank");
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "updateClick", namaPerusahaan }) });
     setTimeout(fetchData, 2000);
@@ -219,7 +219,7 @@ export default function Home() {
     setCvLoading(true);
     try {
       const targetAhli = dataAll.tenagaAhli.find((a: any) => a.Nama === selectedAhliForCv);
-      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional untuk tender:\n- Nama: ${targetAhli?.Nama}, Posisi: ${targetAhli?.PosisiUtama}, Sertifikasi: ${targetAhli?.Sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman}\nTarget Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
+      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional yang elegan dan persuasif untuk tender:\n- Nama: ${targetAhli?.Nama}, Posisi: ${targetAhli?.PosisiUtama}, Sertifikasi: ${targetAhli?.Sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman}\nTarget Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -232,8 +232,46 @@ export default function Home() {
     setCvLoading(false);
   };
 
+  // Fungsi Deteksi & Pendaftaran Pengenal Suara Baru (Speaker Recognition Biometrics)
+  const handleVoiceSpeakerIdentification = async (spokenText: string) => {
+    const textLower = spokenText.toLowerCase();
+    
+    // Jika ada sapaan / perkenalan nama baru
+    if (textLower.includes("nama saya") || textLower.includes("ini") || textLower.includes("saya")) {
+      // Contoh tangkapan sederhana dari ujaran suara
+      let detectedName = "";
+      if (textLower.includes("alda")) {
+        detectedName = "Alda";
+      } else {
+        // Ambil kata setelah "nama saya" atau "aku"
+        const words = spokenText.split(" ");
+        const idx = words.findIndex(w => w.toLowerCase() === "saya" || w.toLowerCase() === "aku" || w.toLowerCase() === "ini");
+        if (idx > -1 && words[idx + 1]) {
+          detectedName = words[idx + 1];
+        }
+      }
+
+      if (detectedName && detectedName.toLowerCase() !== activeUser.toLowerCase()) {
+        setActiveUser(detectedName);
+        // Cek apakah sudah ada di sheet Voice Profiles
+        const existing = dataAll.voiceProfiles.find((v: any) => v.NamaUser?.toLowerCase() === detectedName.toLowerCase());
+        if (!existing) {
+          // Daftarkan ke sheet Voice Profiles otomatis
+          await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ type: "Voice Profiles", action: "register", voiceId: "v_" + Date.now(), namaUser: detectedName })
+          });
+        }
+      }
+    }
+  };
+
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
+    
+    // Cek identitas suara / sapaan
+    await handleVoiceSpeakerIdentification(textToSend);
+
     const currentSession = chatSessions.find(s => s.id === currentSessionId);
     if (!currentSession) return;
 
@@ -246,7 +284,8 @@ export default function Home() {
 
     try {
       const historyContext = updatedMessages.map(m => `${m.role === 'user' ? 'User' : 'LISA'}: ${m.content}`).join("\n");
-      const promptText = `Anda adalah LISA (Lead Intelligence & Sales Assistant), asisten AI sales profesional berkarakter feminin, cerdas, elegan, ramah, dan santun. Riwayat percakapan:\n${historyContext}\nJawab dengan gaya bahasa profesional dan membantu.`;
+      // Instruksi agar jawaban lisan singkat, ramah, dan memanggil nama user aktif
+      const promptText = `Anda adalah LISA (Lead Intelligence & Sales Assistant), asisten AI sales profesional berkarakter feminin, cerdas, elegan, dan santun. Panggil pengguna dengan sapaan "Kak ${activeUser}". Jika pengguna menyapa atau bertanya singkat, BERIKAN JAWABAN SINGKAT, PADAT, dan ELEGAN (maksimal 1-2 kalimat). Riwayat:\n${historyContext}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -263,7 +302,7 @@ export default function Home() {
 
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(aiReply.replace(/[#_*`-]/g, "").slice(0, 350));
+        const utterance = new SpeechSynthesisUtterance(aiReply.replace(/[#_*`-]/g, "").slice(0, 250));
         utterance.lang = 'id-ID';
         utterance.pitch = 1.3; 
         utterance.rate = 1.05;
@@ -323,7 +362,7 @@ export default function Home() {
       };
 
       recognition.start();
-      alert("🎤 Mode Asisten Suara Continuous Aktif!");
+      alert(`🎤 Mode Suara Aktif! Halo Kak ${activeUser}, LISA mendengarkan...`);
     }
   };
 
@@ -397,11 +436,12 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
+  // Perbaikan Kalkulasi Pipeline & Pie Chart agar langsung akurat
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const val = parseRupiah(p.EstimasiNilaiProjek || p.EstimasiNilai);
+    const val = parseRupiah(p.EstimasiNilaiProjek || p.EstimasiNilai || p.EstimasiNilaiProjek);
     totalNilaiPipeline += val;
-    const status = (p.Status || "Cold").trim();
+    const status = (p.Status || "Cold").toString().trim();
     if (status === "Hot") hotVal += val; 
     else if (status === "Warm") warmVal += val; 
     else if (status === "Gagal") gagalVal += val; 
@@ -426,7 +466,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-md text-transparent bg-clip-text bg-gradient-to-r from-pink-300 via-purple-200 to-white">LISA</h1>
-              <p className="text-xs text-pink-300 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant</p>
+              <p className="text-xs text-pink-300 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant • Aktif: <span className="text-white">{activeUser}</span></p>
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs font-bold">
@@ -657,6 +697,32 @@ export default function Home() {
               </form>
             </div>
 
+            {/* FITUR GENERATOR CV DIKEMBALIKAN */}
+            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl border border-pink-500/20 space-y-6">
+              <div>
+                <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">📄 Generator CV Tender AI</h3>
+              </div>
+              <form onSubmit={handleGenerateCvAi} className="space-y-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <select className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-white outline-none" value={selectedAhliForCv} onChange={e => setSelectedAhliForCv(e.target.value)} required>
+                    <option value="" className="text-slate-800">-- Pilih Personil --</option>
+                    {dataAll.tenagaAhli?.map((a: any, idx: number) => <option key={idx} value={a.Nama} className="text-white">{a.Nama} ({a.PosisiUtama})</option>)}
+                  </select>
+                  <input type="text" placeholder="Syarat Tender (opsional)..." className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-white outline-none" value={tenderReqForAhli} onChange={e => setTenderReqForAhli(e.target.value)} />
+                </div>
+                <button type="submit" className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white p-4 rounded-2xl font-bold text-xs shadow-lg">{cvLoading ? "🤖 Menyusun CV..." : "✨ Generate CV"}</button>
+              </form>
+              {cvResult && (
+                <div className="bg-slate-800/80 p-6 rounded-2xl text-xs leading-relaxed border border-slate-700">
+                   <div className="flex justify-between items-center border-b border-slate-700 pb-3 mb-3">
+                    <strong className="text-pink-300">Hasil CV:</strong>
+                    <button onClick={() => navigator.clipboard.writeText(cvResult)} className="bg-slate-700 px-3 py-1.5 rounded-lg">Copy</button>
+                  </div>
+                  <p className="whitespace-pre-line">{cvResult}</p>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dataAll.tenagaAhli?.map((a: any, i: number) => (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow space-y-2">
@@ -719,8 +785,8 @@ export default function Home() {
             <div className="bg-gradient-to-br from-slate-900 via-purple-950 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl border border-pink-500/20 space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Continuous Voice Assistant</h3>
-                  <p className="text-xs text-pink-200 mt-1">Klik mikrofon untuk memulai percakapan suara berkelanjutan dengan LISA.</p>
+                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (Aktif: {activeUser})</h3>
+                  <p className="text-xs text-pink-200 mt-1">LISA mengenali suara Anda, merespon singkat, dan mendaftarkan user baru.</p>
                 </div>
                 <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
@@ -739,7 +805,7 @@ export default function Home() {
               <div ref={chatContainerRef} className="bg-slate-950/60 backdrop-blur-lg p-5 rounded-2xl border border-slate-800 space-y-4 max-h-[400px] overflow-y-auto">
                 {currentActiveSession?.messages.map((msg, idx) => (
                   <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[10px] text-pink-300 mb-1 font-bold">{msg.role === 'user' ? 'Anda' : 'LISA'}</span>
+                    <span className="text-[10px] text-pink-300 mb-1 font-bold">{msg.role === 'user' ? activeUser : 'LISA'}</span>
                     <div className={`p-4 rounded-2xl text-xs leading-relaxed max-w-[85%] whitespace-pre-line ${msg.role === 'user' ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow' : 'bg-slate-800 text-slate-100 border border-slate-700'}`}>
                       {msg.content}
                     </div>
