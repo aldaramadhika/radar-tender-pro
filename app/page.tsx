@@ -20,7 +20,6 @@ export default function Home() {
   const [pernahProj, setPernahProj] = useState("Belum");
 
   // State Pipeline
-  const [editIndexPipe, setEditIndexPipe] = useState<number | null>(null);
   const [pipePerusahaan, setPipePerusahaan] = useState("");
   const [pipeProjek, setPipeProjek] = useState("");
   const [pipeNilai, setPipeNilai] = useState("");
@@ -30,7 +29,6 @@ export default function Home() {
   const [pipeCatatan, setPipeCatatan] = useState("");
 
   // State Portofolio
-  const [editIndexExp, setEditIndexExp] = useState<number | null>(null);
   const [expPerusahaan, setExpPerusahaan] = useState("");
   const [expIndustri, setExpIndustri] = useState("IT Masterplan / EA");
   const [expPekerjaan, setExpPekerjaan] = useState("");
@@ -42,13 +40,11 @@ export default function Home() {
   const [filterKeyword, setFilterKeyword] = useState("");
 
   // State Rekanan
-  const [editIndexRekanan, setEditIndexRekanan] = useState<number | null>(null);
   const [rekNama, setRekNama] = useState("");
   const [rekProduk, setRekProduk] = useState("");
   const [rekHarga, setRekHarga] = useState("");
   const [rekPic, setRekPic] = useState("");
   const [rekTelp, setRekTelp] = useState("");
-  const [rekVisit, setRekVisit] = useState("");
   const [rekKet, setRekKet] = useState("");
 
   // State Tenaga Ahli
@@ -64,12 +60,19 @@ export default function Home() {
   const [cvResult, setCvResult] = useState("");
   const [cvLoading, setCvLoading] = useState(false);
 
-  // State AI Chat Sessions
+  // State Catatan
+  const [editIndexCatatan, setEditIndexCatatan] = useState<number | null>(null);
+  const [catPerusahaan, setCatPerusahaan] = useState("Umum");
+  const [catTopik, setCatTopik] = useState("");
+  const [catIsi, setCatIsi] = useState("");
+
+  // State AI Chat Sessions & Continuous Voice
   const [chatSessions, setChatSessions] = useState<{ id: string; title: string; messages: { role: string; content: string }[] }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // State AI Studio
@@ -83,18 +86,12 @@ export default function Home() {
   const [aiSearchResult, setAiSearchResult] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // State Catatan
-  const [catTopik, setCatTopik] = useState("");
-  const [catPerusahaan, setCatPerusahaan] = useState("Umum");
-  const [catIsi, setCatIsi] = useState("");
-
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}?action=getAll`);
       const json = await res.json();
       
-      // Sanitasi data agar tidak undefined jika sheet kosong
       setDataAll({
         perusahaan: json.perusahaan || [],
         pengalaman: json.pengalaman || [],
@@ -135,20 +132,14 @@ export default function Home() {
   const saveSessionToCloud = async (sessionId: string, title: string, messages: any[]) => {
     await fetch(API_URL, { 
       method: "POST", 
-      body: JSON.stringify({ 
-        type: "Riwayat AI", 
-        action: "saveSession", 
-        sessionID: sessionId, 
-        title: title, 
-        messagesJSON: JSON.stringify(messages) 
-      }) 
+      body: JSON.stringify({ type: "Riwayat AI", action: "saveSession", sessionID: sessionId, title: title, messagesJSON: JSON.stringify(messages) }) 
     });
   };
 
   const createNewChatSession = () => {
     const newId = Date.now().toString();
     const newTitle = `Diskusi ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})} - ${new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}`;
-    const initialMsg = [{ role: 'model', content: 'Halo! Saya LISA (Lead Intelligence & Sales Assistant), siap membantu menyusun strategi tender, pitch deck, dan proposal Anda.' }];
+    const initialMsg = [{ role: 'model', content: 'Halo! Saya LISA, asisten sales profesional Anda. Ada tender atau strategi bisnis yang ingin kita diskusikan?' }];
     
     const newSession = { id: newId, title: newTitle, messages: initialMsg };
     setChatSessions([newSession, ...chatSessions]);
@@ -159,20 +150,13 @@ export default function Home() {
   const deleteChatSession = async (id: string, e: any) => {
     e.stopPropagation();
     if (!confirm("Hapus obrolan ini? (Data akan dipindahkan ke sheet Sampah)")) return;
-
     const filtered = chatSessions.filter(s => s.id !== id);
     setChatSessions(filtered);
-    if (currentSessionId === id && filtered.length > 0) {
-      setCurrentSessionId(filtered[0].id);
-    } else if (filtered.length === 0) {
-      createNewChatSession();
-    }
-
-    await fetch(API_URL, { 
-      method: "POST", 
-      body: JSON.stringify({ type: "Riwayat AI", action: "deleteSession", sessionID: id }) 
-    });
-    alert("Obrolan berhasil dipindahkan ke Sampah!");
+    if (currentSessionId === id && filtered.length > 0) setCurrentSessionId(filtered[0].id);
+    else if (filtered.length === 0) createNewChatSession();
+    
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "delete", sheetName: "Riwayat AI", rowIndex: chatSessions.findIndex(s => s.id === id) }) });
+    alert("Obrolan dipindahkan ke Sampah!");
   };
 
   const handleOpenEproc = async (namaPerusahaan: string, url: string) => {
@@ -197,7 +181,7 @@ export default function Home() {
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "updateStatus", rowIndex: index, tahapan, status }) });
     fetchData();
-    alert("Status pipeline diperbarui!");
+    alert("Status pipeline berhasil diperbarui!");
   };
 
   const handleSavePengalaman = async (e: any) => {
@@ -220,19 +204,23 @@ export default function Home() {
     alert("Data Tenaga Ahli berhasil disimpan!");
   };
 
+  const handleSaveCatatan = async (e: any) => {
+    e.preventDefault();
+    const actionType = editIndexCatatan !== null ? "edit" : "add";
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Catatan", action: actionType, rowIndex: editIndexCatatan, namaPerusahaan: catPerusahaan, topik: catTopik, isiCatatan: catIsi }) });
+    setCatTopik(""); setCatIsi(""); setEditIndexCatatan(null); fetchData();
+  };
+
   const handleGenerateCvAi = async (e: any) => {
     e.preventDefault();
     if (!selectedAhliForCv) { alert("Pilih tenaga ahli terlebih dahulu!"); return; }
     setCvLoading(true);
     try {
       const targetAhli = dataAll.tenagaAhli.find((a: any) => a.Nama === selectedAhliForCv);
-      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional untuk tender:
-      - Nama: ${targetAhli?.Nama}, Posisi: ${targetAhli?.PosisiUtama}, Sertifikasi: ${targetAhli?.Sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman}
-      Target Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
+      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional untuk tender:\n- Nama: ${targetAhli?.Nama}, Posisi: ${targetAhli?.PosisiUtama}, Sertifikasi: ${targetAhli?.Sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman}\nTarget Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
       });
       const json = await res.json();
@@ -242,17 +230,13 @@ export default function Home() {
     setCvLoading(false);
   };
 
-  const handleSendChat = async (e: any) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-
-    const userMsg = chatInput;
-    setChatInput("");
-
+  // Fungsi pengiriman pesan chat ke Gemini API
+  const processAndSendChat = async (textToSend: string) => {
+    if (!textToSend.trim()) return;
     const currentSession = chatSessions.find(s => s.id === currentSessionId);
     if (!currentSession) return;
 
-    const updatedMessages = [...currentSession.messages, { role: 'user', content: userMsg }];
+    const updatedMessages = [...currentSession.messages, { role: 'user', content: textToSend }];
     const updatedSessions = chatSessions.map(s => s.id === currentSessionId ? { ...s, messages: updatedMessages } : s);
     setChatSessions(updatedSessions);
     setChatLoading(true);
@@ -261,11 +245,10 @@ export default function Home() {
 
     try {
       const historyContext = updatedMessages.map(m => `${m.role === 'user' ? 'User' : 'LISA'}: ${m.content}`).join("\n");
-      const promptText = `Anda adalah LISA (Lead Intelligence & Sales Assistant), asisten AI sales profesional berkarakter feminin, cerdas, ramah, dan santun. Riwayat percakapan:\n${historyContext}\nJawab dengan gaya bahasa yang profesional, elegan, persuasif, dan membantu.`;
+      const promptText = `Anda adalah LISA (Lead Intelligence & Sales Assistant), asisten AI sales profesional berkarakter feminin, cerdas, elegan, ramah, dan santun. Riwayat percakapan:\n${historyContext}\nJawab dengan gaya bahasa profesional dan membantu.`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
       });
       const json = await res.json();
@@ -277,13 +260,21 @@ export default function Home() {
       setChatSessions(finalSessions);
       saveSessionToCloud(currentSession.id, currentSession.title, finalMessages);
 
-      // Suara AI (Voice Assistant mendekati karakteristik feminin/lembut)
+      // Suara AI (Voice Assistant feminin & kontinu)
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(aiReply.replace(/[#_*`-]/g, "").slice(0, 350));
         utterance.lang = 'id-ID';
-        utterance.pitch = 1.3; // Pitch sedikit lebih tinggi/feminin
-        utterance.rate = 1.05; // Kecepatan natural
+        utterance.pitch = 1.3; 
+        utterance.rate = 1.05;
+        
+        // Setelah suara selesai, jika voiceActive masih true, aktifkan mik lagi secara otomatis (Continuous)
+        utterance.onend = () => {
+          if (voiceActive && recognitionRef.current) {
+            try { recognitionRef.current.start(); } catch(e) {}
+          }
+        };
+
         window.speechSynthesis.speak(utterance);
       }
     } catch (err: any) {
@@ -292,33 +283,67 @@ export default function Home() {
     setChatLoading(false);
   };
 
-  const startVoiceInput = () => {
+  const handleSendChat = (e: any) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    const text = chatInput;
+    setChatInput("");
+    processAndSendChat(text);
+  };
+
+  // Continuous Voice Assistant (Terus aktif sampai dimatikan manual)
+  const toggleContinuousVoice = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Browser Anda tidak mendukung Voice Recognition.");
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'id-ID';
-    recognition.onstart = () => setVoiceActive(true);
-    recognition.onresult = (event: any) => {
-      setChatInput(event.results[0][0].transcript);
-      setVoiceActive(false);
-    };
-    recognition.onerror = () => setVoiceActive(false);
-    recognition.onend = () => setVoiceActive(false);
-    recognition.start();
-  };
 
-  const handleSaveCatatan = async (e: any) => {
-    e.preventDefault();
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Catatan", action: "add", namaPerusahaan: catPerusahaan, topik: catTopik, isiCatatan: catIsi }) });
-    setCatTopik(""); setCatIsi(""); fetchData();
+    if (voiceActive) {
+      // Matikan
+      setVoiceActive(false);
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      alert("Mode Asisten Suara Continuous dimatikan.");
+    } else {
+      // Nyalakan
+      setVoiceActive(true);
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'id-ID';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          processAndSendChat(transcript);
+        }
+      };
+
+      recognition.onerror = () => {
+        // Restart otomatis jika error/senyap
+        if (voiceActive) {
+          try { recognition.start(); } catch(e) {}
+        }
+      };
+
+      recognition.onend = () => {
+        // Restart otomatis jika sesi bicara selesai dan voiceActive masih menyala
+        if (voiceActive) {
+          try { recognition.start(); } catch(e) {}
+        }
+      };
+
+      recognition.start();
+      alert("🎤 Mode Asisten Suara Continuous Aktif! LISA akan terus mendengarkan dan merespon suara Anda sampai Anda menekan tombol mikrofon sekali lagi.");
+    }
   };
 
   const handleDelete = async (sheetName: string, rowIndex: number, nama: string) => {
-    if (!confirm(`Yakin menghapus "${nama}"?`)) return;
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "delete", sheetName, rowIndex, alasan: "Dihapus dari web" }) });
+    if (!confirm(`Yakin menghapus "${nama}"? (Data akan masuk ke Sampah)`)) return;
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "delete", sheetName, rowIndex }) });
     fetchData();
   };
 
@@ -351,7 +376,8 @@ export default function Home() {
       if (uploadedFileBase64) contentsPart.push({ inline_data: { mime_type: "application/pdf", data: uploadedFileBase64 } });
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: contentsPart }] })
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: contentsPart }] })
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);
@@ -381,16 +407,20 @@ export default function Home() {
     const matchKeyword = !keyword || 
       item.NamaPekerjaan?.toLowerCase().includes(keyword) || 
       item.NamaPerusahaan?.toLowerCase().includes(keyword) || 
-      item.Keterangan?.toLowerCase().includes(keyword); // Pencarian hashtag otomatis di sini
+      item.Keterangan?.toLowerCase().includes(keyword);
     return matchIndustri && matchKeyword;
   });
 
+  // Perhitungan Pipeline & Pie Chart
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const val = parseRupiah(p.EstimasiNilaiProjek);
+    const val = parseRupiah(p.EstimasiNilaiProjek || p.EstimasiNilai);
     totalNilaiPipeline += val;
-    const status = p.Status || "Cold";
-    if (status === "Hot") hotVal += val; else if (status === "Warm") warmVal += val; else if (status === "Gagal") gagalVal += val; else coldVal += val;
+    const status = (p.Status || "Cold").trim();
+    if (status === "Hot") hotVal += val; 
+    else if (status === "Warm") warmVal += val; 
+    else if (status === "Gagal") gagalVal += val; 
+    else coldVal += val;
   });
 
   const safeTotal = totalNilaiPipeline || 1;
@@ -400,22 +430,24 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-pink-50 to-purple-100 text-slate-800 pb-40 font-sans">
-      <header className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem]">
+      <header className="w-full bg-gradient-to-r from-pink-600 via-purple-700 to-indigo-800 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem]">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           <div className="flex items-center gap-4">
-            {/* Ikon Siluet Cewek Panjang Cantik ala Lisa BLACKPINK */}
-            <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/60 flex items-center justify-center shadow-xl text-3xl shrink-0 backdrop-blur-md">
-              👩🏻‍🦰✨
+            {/* Siluet Dewasa & Seksi ala Lisa BLACKPINK */}
+            <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/40 flex items-center justify-center shadow-xl shrink-0 backdrop-blur-md overflow-hidden p-2">
+              <svg viewBox="0 0 24 24" className="w-12 h-12 fill-white/90 drop-shadow">
+                <path d="M12 2C9.5 2 7.5 4 7.5 6.5C7.5 7.8 8.1 9 9 9.8V11C7 11.5 5.5 13.5 5.5 16V18C5.5 19.1 6.4 20 7.5 20H16.5C17.6 20 18.5 19.1 18.5 18V16C18.5 13.5 17 11.5 15 11V9.8C15.9 9 16.5 7.8 16.5 6.5C16.5 4 14.5 2 12 2M10 6.5C10 5.7 10.7 5 11.5 5H12.5C13.3 5 14 5.7 14 6.5C14 7.3 13.3 8 12.5 8H11.5C10.7 8 10 7.3 10 6.5M12 10C14.2 10 16 11.8 16 14V17H8V14C8 11.8 9.8 10 12 10Z"/>
+              </svg>
             </div>
             <div>
               <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-md">LISA</h1>
-              <p className="text-xs text-pink-100 font-bold mt-1 tracking-wider uppercase">Lead Intelligence & Sales Assistant</p>
+              <p className="text-xs text-pink-200 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant</p>
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs font-bold">
-            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">🏢 Portal: {dataAll.perusahaan.length}</span>
-            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">🚀 Peluang: {dataAll.pipeline.length}</span>
-            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">👨‍💻 Ahli: {dataAll.tenagaAhli?.length || 0}</span>
+            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30 shadow">🏢 Portal: {dataAll.perusahaan.length}</span>
+            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30 shadow">🚀 Peluang: {dataAll.pipeline.length}</span>
+            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30 shadow">👨‍💻 Ahli: {dataAll.tenagaAhli?.length || 0}</span>
           </div>
         </div>
       </header>
@@ -454,7 +486,7 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {dataAll.perusahaan.map((item: any, i: number) => (
-                <div key={i} className={`bg-white/90 p-6 rounded-[2rem] border shadow-xl flex flex-col justify-between gap-4 ${item.StatusUpdate === "NEW" ? 'border-pink-400 ring-4 ring-pink-50' : 'border-white'}`}>
+                <div key={i} className="bg-white/90 p-6 rounded-[2rem] border shadow-xl flex flex-col justify-between gap-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <h3 className="font-extrabold text-lg text-slate-800">{item.NamaPerusahaan}</h3>
@@ -552,7 +584,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border">
-                    <div>💰 Nilai: <strong className="text-emerald-700">{p.EstimasiNilaiProjek || "-"}</strong></div>
+                    <div>💰 Nilai: <strong className="text-emerald-700">{p.EstimasiNilaiProjek || p.EstimasiNilai || "-"}</strong></div>
                     <div>📅 Tayang: <strong>{p.TanggalEstimasiTayangTender || "-"}</strong></div>
                   </div>
                   <div className="flex justify-end gap-3 text-xs font-bold pt-1">
@@ -572,20 +604,10 @@ export default function Home() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input type="text" placeholder="Nama Perusahaan Klien" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPerusahaan} onChange={e => setExpPerusahaan(e.target.value)} required />
                     <select className="p-4 bg-slate-50 border rounded-2xl w-full" value={expIndustri} onChange={e => setExpIndustri(e.target.value)}>
-                      <option>IT Masterplan / EA</option>
-                      <option>IT Governance</option>
-                      <option>IT audit / asesment</option>
-                      <option>IT security</option>
-                      <option>ISO</option>
-                      <option>IT Custom Dev</option>
-                      <option>AI / Machine learning</option>
-                      <option>Big Data / KMS / PAM</option>
-                      <option>Hardware</option>
-                      <option>Lisensi</option>
+                      <option>IT Masterplan / EA</option><option>IT Governance</option><option>IT audit / asesment</option><option>IT security</option><option>ISO</option><option>IT Custom Dev</option><option>AI / Machine learning</option><option>Big Data / KMS / PAM</option><option>Hardware</option><option>Lisensi</option>
                     </select>
                   </div>
                   <input type="text" placeholder="Judul / Jenis Pekerjaan" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPekerjaan} onChange={e => setExpPekerjaan(e.target.value)} required />
-                  
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 mb-1">Tanggal Mulai:</label>
@@ -600,8 +622,7 @@ export default function Home() {
                       <input type="text" placeholder="Contoh: 150000000" className="p-3 bg-slate-50 border rounded-xl w-full text-xs" value={expNilai} onChange={e => setExpNilai(e.target.value)} />
                     </div>
                   </div>
-
-                  <textarea placeholder="Keterangan & Hashtag (Misal: #ISO #Security #BankJateng)..." className="p-4 bg-slate-50 border rounded-2xl w-full text-xs" rows={2} value={expKet} onChange={e => setExpKet(e.target.value)} />
+                  <textarea placeholder="Keterangan & Hashtag (Misal: #ISO #Security)..." className="p-4 bg-slate-50 border rounded-2xl w-full text-xs" rows={2} value={expKet} onChange={e => setExpKet(e.target.value)} />
                   <button type="submit" className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold shadow">Simpan Portofolio</button>
                </form>
             </div>
@@ -611,18 +632,9 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <select className="w-full p-3 bg-white border rounded-xl" value={filterIndustri} onChange={e => setFilterIndustri(e.target.value)}>
                   <option value="Semua">Semua Kategori</option>
-                  <option value="IT Masterplan / EA">IT Masterplan / EA</option>
-                  <option value="IT Governance">IT Governance</option>
-                  <option value="IT audit / asesment">IT audit / asesment</option>
-                  <option value="IT security">IT security</option>
-                  <option value="ISO">ISO</option>
-                  <option value="IT Custom Dev">IT Custom Dev</option>
-                  <option value="AI / Machine learning">AI / Machine learning</option>
-                  <option value="Big Data / KMS / PAM">Big Data / KMS / PAM</option>
-                  <option value="Hardware">Hardware</option>
-                  <option value="Lisensi">Lisensi</option>
+                  <option value="IT Masterplan / EA">IT Masterplan / EA</option><option value="IT Governance">IT Governance</option><option value="IT audit / asesment">IT audit / asesment</option><option value="IT security">IT security</option><option value="ISO">ISO</option><option value="IT Custom Dev">IT Custom Dev</option><option value="AI / Machine learning">AI / Machine learning</option><option value="Big Data / KMS / PAM">Big Data / KMS / PAM</option><option value="Hardware">Hardware</option><option value="Lisensi">Lisensi</option>
                 </select>
-                <input type="text" placeholder="Cari keyword atau #hashtag (contoh: #ISO)..." className="w-full p-3 bg-white border rounded-xl" value={filterKeyword} onChange={e => setFilterKeyword(e.target.value)} />
+                <input type="text" placeholder="Cari keyword atau #hashtag..." className="w-full p-3 bg-white border rounded-xl" value={filterKeyword} onChange={e => setFilterKeyword(e.target.value)} />
               </div>
             </div>
 
@@ -649,43 +661,15 @@ export default function Home() {
               <form onSubmit={handleSaveTenagaAhli} className="space-y-4 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input type="text" placeholder="Nama Lengkap & Gelar" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliNama} onChange={e => setAhliNama(e.target.value)} required />
-                  <input type="text" placeholder="Posisi Utama (Misal: IT Project Manager)" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliPosisi} onChange={e => setAhliPosisi(e.target.value)} required />
+                  <input type="text" placeholder="Posisi Utama" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliPosisi} onChange={e => setAhliPosisi(e.target.value)} required />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input type="text" placeholder="Sertifikasi (TOGAF, ISO, dll)" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliSertif} onChange={e => setAhliSertif(e.target.value)} required />
+                  <input type="text" placeholder="Sertifikasi" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliSertif} onChange={e => setAhliSertif(e.target.value)} required />
                   <input type="text" placeholder="No Kontak" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliKontak} onChange={e => setAhliKontak(e.target.value)} />
                 </div>
-                <textarea placeholder="Ringkasan Pengalaman Projek..." className="p-4 bg-slate-50 border rounded-2xl w-full" rows={3} value={ahliPengalaman} onChange={e => setAhliPengalaman(e.target.value)} required />
-                <div className="flex gap-2">
-                  <button type="submit" className="flex-1 bg-pink-600 text-white p-4 rounded-2xl font-bold shadow">{editIndexAhli !== null ? "Simpan Perubahan" : "Simpan Tenaga Ahli"}</button>
-                  {editIndexAhli !== null && <button type="button" onClick={() => { setEditIndexAhli(null); setAhliNama(""); setAhliPosisi(""); setAhliSertif(""); setAhliPengalaman(""); setAhliKontak(""); }} className="bg-slate-200 px-6 rounded-2xl font-bold">Batal</button>}
-                </div>
+                <textarea placeholder="Ringkasan Pengalaman..." className="p-4 bg-slate-50 border rounded-2xl w-full" rows={3} value={ahliPengalaman} onChange={e => setAhliPengalaman(e.target.value)} required />
+                <button type="submit" className="w-full bg-pink-600 text-white p-4 rounded-2xl font-bold shadow">{editIndexAhli !== null ? "Simpan Perubahan" : "Simpan Tenaga Ahli"}</button>
               </form>
-            </div>
-
-            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
-              <div>
-                <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">📄 Generator CV Tender AI</h3>
-              </div>
-              <form onSubmit={handleGenerateCvAi} className="space-y-4 text-sm">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <select className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-white outline-none" value={selectedAhliForCv} onChange={e => setSelectedAhliForCv(e.target.value)} required>
-                    <option value="" className="text-slate-800">-- Pilih Personil --</option>
-                    {dataAll.tenagaAhli?.map((a: any, idx: number) => <option key={idx} value={a.Nama} className="text-slate-800">{a.Nama} ({a.PosisiUtama})</option>)}
-                  </select>
-                  <input type="text" placeholder="Syarat Tender (opsional)..." className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-white outline-none" value={tenderReqForAhli} onChange={e => setTenderReqForAhli(e.target.value)} />
-                </div>
-                <button type="submit" className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white p-4 rounded-2xl font-bold text-xs shadow-lg">{cvLoading ? "🤖 Menyusun CV..." : "✨ Generate CV"}</button>
-              </form>
-              {cvResult && (
-                <div className="bg-white/10 p-6 rounded-2xl text-xs leading-relaxed">
-                   <div className="flex justify-between items-center border-b border-white/10 pb-3 mb-3">
-                    <strong className="text-pink-300">Hasil CV:</strong>
-                    <button onClick={() => navigator.clipboard.writeText(cvResult)} className="bg-white/20 px-3 py-1.5 rounded-lg">Copy</button>
-                  </div>
-                  <p className="whitespace-pre-line">{cvResult}</p>
-                </div>
-              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -747,14 +731,13 @@ export default function Home() {
 
         {tab === "rekaman" && (
           <div className="space-y-6">
-            {/* AI Chat Session */}
             <div className="bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-900 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - AI Assistant Chat</h3>
-                  <p className="text-xs text-pink-200 mt-1">Ngobrol dengan LISA secara lisan atau ketik, memori tersimpan di Cloud!</p>
+                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Continuous Voice Assistant</h3>
+                  <p className="text-xs text-pink-200 mt-1">Klik mikrofon untuk memulai percakapan suara berkelanjutan dengan LISA.</p>
                 </div>
-                <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5">
+                <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
                 </button>
               </div>
@@ -777,17 +760,23 @@ export default function Home() {
                     </div>
                   </div>
                 ))}
-                {chatLoading && <div className="text-xs text-pink-300 animate-pulse">👩🏻‍🦰 LISA sedang mengetik...</div>}
+                {chatLoading && <div className="text-xs text-pink-300 animate-pulse">👩🏻‍🦰 LISA sedang merespon...</div>}
               </div>
 
               <form onSubmit={handleSendChat} className="flex gap-2 items-center">
-                <button type="button" onClick={startVoiceInput} className={`p-4 rounded-2xl text-white font-bold text-sm shadow shrink-0 ${voiceActive ? 'bg-rose-500 animate-bounce' : 'bg-pink-600 hover:bg-pink-700'}`}>🎙️</button>
-                <input type="text" placeholder="Ketik pesan atau tanyakan strategi..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
+                <button 
+                  type="button" 
+                  onClick={toggleContinuousVoice} 
+                  title="Voice Assistant Continuous"
+                  className={`p-4 rounded-2xl text-white font-bold text-sm shadow shrink-0 transition ${voiceActive ? 'bg-rose-500 ring-4 ring-rose-300 animate-pulse' : 'bg-pink-600 hover:bg-pink-700'}`}
+                >
+                  {voiceActive ? "🛑" : "🎙️"}
+                </button>
+                <input type="text" placeholder="Ketik pesan..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
                 <button type="submit" className="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-4 rounded-2xl font-bold text-xs shadow-lg shrink-0">Kirim</button>
               </form>
             </div>
 
-            {/* AI Studio (Bedah RKS, Cek Typo, Analisa Proposal, Pitch Deck) */}
             <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
               <div>
                 <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">📊 LISA - Dokumen & Proposal Generator</h3>
@@ -801,7 +790,7 @@ export default function Home() {
                 </div>
                 <textarea rows={3} placeholder="Instruksi tambahan untuk LISA..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none" value={aiQuery} onChange={e => setAiQuery(e.target.value)} />
                 <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
-                  <span className="font-bold block text-cyan-300 text-xs">⚙️ Pilih Kebutuhan Analisis & Generator:</span>
+                  <span className="font-bold block text-cyan-300 text-xs">⚙️ Pilih Kebutuhan:</span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                     <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optBedahRks} onChange={e => setOptBedahRks(e.target.checked)} className="w-4 h-4 accent-pink-500" /><span>🔍 Bedah RKS Mendalam</span></label>
                     <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optCekTypo} onChange={e => setOptCekTypo(e.target.checked)} className="w-4 h-4 accent-pink-500" /><span>📝 Cek Typo & Perbaikan Bahasa</span></label>
@@ -827,17 +816,27 @@ export default function Home() {
         {tab === "catatan" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-2xl border">
-              <h2 className="font-extrabold text-xl text-slate-800 mb-4">📝 Catatan</h2>
+              <h2 className="font-extrabold text-xl text-slate-800 mb-4">{editIndexCatatan !== null ? "✏️ Edit Catatan" : "📝 Buat Catatan Baru"}</h2>
               <form onSubmit={handleSaveCatatan} className="space-y-4 text-sm">
-                <input type="text" placeholder="Topik" className="w-full p-4 bg-slate-50 border rounded-2xl" value={catTopik} onChange={e => setCatTopik(e.target.value)} required />
-                <textarea placeholder="Isi..." className="w-full p-4 bg-slate-50 border rounded-2xl text-xs" rows={3} value={catIsi} onChange={e => setCatIsi(e.target.value)} required />
-                <button type="submit" className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold">Simpan</button>
+                <input type="text" placeholder="Topik Catatan" className="w-full p-4 bg-slate-50 border rounded-2xl" value={catTopik} onChange={e => setCatTopik(e.target.value)} required />
+                <textarea placeholder="Isi catatan..." className="w-full p-4 bg-slate-50 border rounded-2xl text-xs" rows={3} value={catIsi} onChange={e => setCatIsi(e.target.value)} required />
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-slate-800 text-white p-4 rounded-2xl font-bold">{editIndexCatatan !== null ? "Simpan Perubahan" : "Simpan Catatan"}</button>
+                  {editIndexCatatan !== null && <button type="button" onClick={() => { setEditIndexCatatan(null); setCatTopik(""); setCatIsi(""); }} className="bg-slate-200 px-6 rounded-2xl font-bold">Batal</button>}
+                </div>
               </form>
             </div>
             <div className="space-y-3">
               {dataAll.catatan.map((c: any, i: number) => (
-                <div key={i} className="bg-white/90 p-5 rounded-2xl border shadow space-y-1">
-                  <div className="flex justify-between font-bold text-xs text-indigo-600"><span>{c.Topik}</span><span className="text-slate-400">{c.Tanggal}</span></div>
+                <div key={i} className="bg-white/90 p-5 rounded-2xl border shadow space-y-2">
+                  <div className="flex justify-between items-center font-bold text-xs text-indigo-600">
+                    <span>{c.Topik}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-slate-400">{c.Tanggal}</span>
+                      <button onClick={() => { setEditIndexCatatan(i); setCatTopik(c.Topik); setCatIsi(c.IsiCatatan); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-600">Edit</button>
+                      <button onClick={() => handleDelete("Catatan", i, c.Topik)} className="text-rose-500">Hapus</button>
+                    </div>
+                  </div>
                   <p className="text-slate-700 text-xs">{c.IsiCatatan}</p>
                 </div>
               ))}
