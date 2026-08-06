@@ -7,7 +7,7 @@ export default function Home() {
     perusahaan: [], pengalaman: [], pipeline: [], catatan: [], rekaman: [], rekanan: [], tenagaAhli: [], riwayatAi: [], sampah: [], bedahRks: [], voiceProfiles: [] 
   });
   const [loading, setLoading] = useState(false);
-  const [activeUser, setActiveUser] = useState("Alda");
+  const [activeUser, setActiveUser] = useState("Alda"); 
   const [checkingEproc, setCheckingEproc] = useState(false);
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
@@ -86,15 +86,15 @@ export default function Home() {
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [aiSearchResult, setAiSearchResult] = useState("");
 
-  // Load Data dengan LocalStorage Cache
+  // Load Data & Cek Cache
   const fetchData = async (useCache = true) => {
+    const savedUser = localStorage.getItem("lisa_active_user");
+    if (savedUser) setActiveUser(savedUser);
+
     if (useCache) {
       const cached = localStorage.getItem("lisa_cache_data");
       if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setDataAll(parsed);
-        } catch(e) {}
+        try { setDataAll(JSON.parse(cached)); } catch(e) {}
       }
     }
 
@@ -147,6 +147,27 @@ export default function Home() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatSessions, currentSessionId, chatLoading]);
+
+  // Deteksi Identitas User berbasis AI Contextual Voice Analysis
+  const detectUserFromVoiceContext = (transcript: string) => {
+    const lower = transcript.toLowerCase();
+    const profiles = dataAll.voiceProfiles || [];
+
+    for (let p of profiles) {
+      const namaUser = p.NamaUser || p.namauser || p.Nama || p.nama;
+      const signatureKeywords = (p.SignatureKeywords || p.signaturekeywords || "").toLowerCase();
+
+      if (namaUser) {
+        // Jika teks lisan mengandung nama user atau keyword spesifik profil suara tersebut
+        if (lower.includes(namaUser.toLowerCase()) || (signatureKeywords && signatureKeywords.split(",").some((kw: string) => kw.trim() && lower.includes(kw.trim())))) {
+          setActiveUser(namaUser);
+          localStorage.setItem("lisa_active_user", namaUser);
+          return namaUser;
+        }
+      }
+    }
+    return activeUser;
+  };
 
   const runAutoEprocCheck = async (isManual = true) => {
     if (isManual) setCheckingEproc(true);
@@ -312,6 +333,9 @@ export default function Home() {
 
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
+
+    // Analisis konteks suara dan identitas pembicara
+    detectUserFromVoiceContext(textToSend);
 
     const eprocReply = checkAndExecuteEprocCommand(textToSend);
     if (eprocReply) {
@@ -507,7 +531,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-md text-transparent bg-clip-text bg-gradient-to-r from-pink-300 via-purple-200 to-white">LISA</h1>
-              <p className="text-xs text-pink-300 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant • Aktif: <span className="text-white">{activeUser}</span></p>
+              <p className="text-xs text-pink-300 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant • User Aktif: <span className="text-white bg-pink-900/60 px-2.5 py-0.5 rounded-full border border-pink-500/30">{activeUser}</span></p>
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs font-bold items-center">
@@ -871,8 +895,8 @@ export default function Home() {
             <div className="bg-gradient-to-br from-slate-900 via-purple-950 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl border border-pink-500/20 space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (Aktif: {activeUser})</h3>
-                  <p className="text-xs text-pink-200 mt-1">Ketik/Katakan: &quot;Buka e-Proc LPS&quot; (LISA akan menampilkan link akses langsung di chat).</p>
+                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (AI Context Match: {activeUser})</h3>
+                  <p className="text-xs text-pink-200 mt-1">Sistem menganalisis konteks suara dan profil Anda dari sheet Voice Profiles.</p>
                 </div>
                 <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
@@ -976,7 +1000,7 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <span className="text-slate-500">{cTanggal}</span>
                       <button onClick={() => { setEditIndexCatatan(i); setCatTopik(cTopik); setCatIsi(cIsi); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
-                      <button onClick={() => handleDelete("Catatan", i, cTopik)} className="text-rose-400">Hapus</li>
+                      <button onClick={() => handleDelete("Catatan", i, cTopik)} className="text-rose-400">Hapus</button>
                     </div>
                   </div>
                   <p className="text-slate-300 text-xs">{cIsi}</p>
