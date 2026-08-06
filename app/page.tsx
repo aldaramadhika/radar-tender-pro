@@ -85,15 +85,25 @@ export default function Home() {
   const [uploadedFileBase64, setUploadedFileBase64] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [aiSearchResult, setAiSearchResult] = useState("");
-  const [searchLoading, setSearchLoading] = useState(false);
 
-  const fetchData = async () => {
+  // Load Data dengan LocalStorage Cache
+  const fetchData = async (useCache = true) => {
+    if (useCache) {
+      const cached = localStorage.getItem("lisa_cache_data");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setDataAll(parsed);
+        } catch(e) {}
+      }
+    }
+
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}?action=getAll`);
       const json = await res.json();
       
-      setDataAll({
+      const freshData = {
         perusahaan: json.perusahaan || [],
         pengalaman: json.pengalaman || [],
         pipeline: json.pipeline || [],
@@ -105,7 +115,10 @@ export default function Home() {
         sampah: json.sampah || [],
         bedahRks: json.bedahRks || [],
         voiceProfiles: json.voiceProfiles || []
-      });
+      };
+
+      setDataAll(freshData);
+      localStorage.setItem("lisa_cache_data", JSON.stringify(freshData));
 
       if (json.riwayatAi && json.riwayatAi.length > 0) {
         const parsedSessions = json.riwayatAi.map((row: any) => ({
@@ -119,12 +132,14 @@ export default function Home() {
       } else {
         if(chatSessions.length === 0) createNewChatSession();
       }
-    } catch (e) { console.log("Gagal memuat data dari Sheets"); }
+    } catch (e) { 
+      console.log("Menggunakan data cadangan lokal."); 
+    }
     setLoading(false);
   };
 
   useEffect(() => { 
-    fetchData(); 
+    fetchData(true); 
   }, []);
 
   useEffect(() => {
@@ -133,7 +148,6 @@ export default function Home() {
     }
   }, [chatSessions, currentSessionId, chatLoading]);
 
-  // Fungsi Pengecekan Perubahan URL e-Proc Otomatis (Change Detector)
   const runAutoEprocCheck = async (isManual = true) => {
     if (isManual) setCheckingEproc(true);
     try {
@@ -142,47 +156,34 @@ export default function Home() {
         const p = dataAll.perusahaan[i];
         const url = p.URL || p.url;
         const oldHash = p.Hash || p.hash || "";
-        
         let badge = "🟢 Tidak Ada Perubahan";
         let newHash = oldHash;
 
         try {
-          // Melakukan test fetch URL (CORS / Cloud Function proxy simulation)
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 4000);
-          
           const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, { signal: controller.signal });
           clearTimeout(timeoutId);
-          
           if (response.ok) {
             const dataObj = await response.json();
             const content = dataObj.contents || "";
-            // Buat hash sederhana dari panjang konten & cuplikan teks
             newHash = content.length.toString() + "_" + content.slice(0, 50);
-
-            if (oldHash && oldHash !== newHash) {
-              badge = "🔴 Ada Perubahan";
-            } else {
-              badge = "🟢 Tidak Ada Perubahan";
-            }
+            badge = (oldHash && oldHash !== newHash) ? "🔴 Ada Perubahan" : "🟢 Tidak Ada Perubahan";
           } else {
             badge = "⚠️ Tidak Bisa Dicek Otomatis";
           }
         } catch (err) {
-          // Kebanyakan web pemerintah/BUMN memblokir client-side fetch (CORS/SSL) -> Tandai otomatis tidak bisa dicek otomatis
           badge = "⚠️ Tidak Bisa Dicek Otomatis";
         }
-
         statuses.push({ index: i, badge, hash: newHash });
       }
 
-      // Kirim hasil update status ke backend Sheets
       await fetch(API_URL, {
         method: "POST",
         body: JSON.stringify({ action: "updateEprocStatus", statuses })
       });
 
-      fetchData();
+      fetchData(false);
       if (isManual) alert("✨ Auto-cek perubahan e-Proc selesai!");
     } catch (e) {
       if (isManual) alert("Gagal melakukan pengecekan otomatis.");
@@ -210,58 +211,57 @@ export default function Home() {
 
   const deleteChatSession = async (id: string, e: any) => {
     e.stopPropagation();
-    if (!confirm("Hapus obrolan ini? (Data akan dipindahkan ke sheet Sampah)")) return;
+    if (!confirm("Hapus obrolan ini?")) return;
     const filtered = chatSessions.filter(s => s.id !== id);
     setChatSessions(filtered);
     if (currentSessionId === id && filtered.length > 0) setCurrentSessionId(filtered[0].id);
     else if (filtered.length === 0) createNewChatSession();
     
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "delete", sheetName: "Riwayat AI", rowIndex: chatSessions.findIndex(s => s.id === id) }) });
-    alert("Obrolan dipindahkan ke Sampah!");
   };
 
   const handleOpenEproc = async (namaPerusahaan: string, url: string) => {
     window.open(url, "_blank");
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "updateClick", namaPerusahaan }) });
-    setTimeout(fetchData, 2000);
+    setTimeout(() => fetchData(false), 2000);
   };
 
   const handleSavePerusahaan = async (e: any) => {
     e.preventDefault();
     const actionType = editIndexP !== null ? "edit" : "add";
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Daftar Perusahaan", action: actionType, rowIndex: editIndexP, nama: namaP, jenis: jenisP, url: urlP, statusRekanan: statusRek, pernahProjek: pernahProj }) });
-    setNamaP(""); setUrlP(""); setStatusRek("Belum"); setPernahProj("Belum"); setEditIndexP(null); fetchData();
+    setNamaP(""); setUrlP(""); setStatusRek("Belum"); setPernahProj("Belum"); setEditIndexP(null); fetchData(false);
   };
 
   const handleSavePipeline = async (e: any) => {
     e.preventDefault();
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "add", namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
-    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); fetchData();
+    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); fetchData(false);
   };
 
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "updateStatus", rowIndex: index, tahapan, status }) });
-    fetchData();
+    fetchData(false);
     alert("Status pipeline berhasil diperbarui!");
   };
 
   const handleSavePengalaman = async (e: any) => {
     e.preventDefault();
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pengalaman", action: "add", namaPerusahaan: expPerusahaan, jenisIndustri: expIndustri, namaPekerjaan: expPekerjaan, tanggalMulai: expTglMulai, durasiPekerjaan: expDurasi, nilaiProjek: expNilai, keterangan: expKet }) });
-    setExpPerusahaan(""); setExpPekerjaan(""); setExpNilai(""); setExpKet(""); fetchData();
+    setExpPerusahaan(""); setExpPekerjaan(""); setExpNilai(""); setExpKet(""); fetchData(false);
   };
 
   const handleSaveRekanan = async (e: any) => {
     e.preventDefault();
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Rekanan", action: "add", namaRekanan: rekNama, produkRekanan: rekProduk, hargaProduk: rekHarga, pic: rekPic, noTelp: rekTelp, keterangan: rekKet }) });
-    setRekNama(""); setRekProduk(""); setRekHarga(""); setRekPic(""); setRekTelp(""); setRekKet(""); fetchData();
+    setRekNama(""); setRekProduk(""); setRekHarga(""); setRekPic(""); setRekTelp(""); setRekKet(""); fetchData(false);
   };
 
   const handleSaveTenagaAhli = async (e: any) => {
     e.preventDefault();
     const actionType = editIndexAhli !== null ? "edit" : "add";
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Tenaga Ahli", action: actionType, rowIndex: editIndexAhli, nama: ahliNama, posisi: ahliPosisi, sertifikasi: ahliSertif, pengalaman: ahliPengalaman, kontak: ahliKontak, keterangan: ahliKet }) });
-    setAhliNama(""); setAhliPosisi(""); setAhliSertif(""); setAhliPengalaman(""); setAhliKontak(""); setAhliKet(""); setEditIndexAhli(null); fetchData();
+    setAhliNama(""); setAhliPosisi(""); setAhliSertif(""); setAhliPengalaman(""); setAhliKontak(""); setAhliKet(""); setEditIndexAhli(null); fetchData(false);
     alert("Data Tenaga Ahli berhasil disimpan!");
   };
 
@@ -269,7 +269,7 @@ export default function Home() {
     e.preventDefault();
     const actionType = editIndexCatatan !== null ? "edit" : "add";
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Catatan", action: actionType, rowIndex: editIndexCatatan, namaPerusahaan: catPerusahaan, topik: catTopik, isiCatatan: catIsi }) });
-    setCatTopik(""); setCatIsi(""); setEditIndexCatatan(null); fetchData();
+    setCatTopik(""); setCatIsi(""); setEditIndexCatatan(null); fetchData(false);
   };
 
   const handleGenerateCvAi = async (e: any) => {
@@ -291,7 +291,6 @@ export default function Home() {
     setCvLoading(false);
   };
 
-  // Logika Perintah e-Proc Otomatis & Cek Database
   const checkAndExecuteEprocCommand = (text: string) => {
     const lower = text.toLowerCase();
     if (lower.includes("buka eproc") || lower.includes("buka e-proc") || lower.includes("buka portal")) {
@@ -303,8 +302,7 @@ export default function Home() {
       if (foundComp) {
         const url = foundComp.URL || foundComp.url;
         const name = foundComp.NamaPerusahaan || foundComp.namaperusahaan;
-        window.open(url, "_blank");
-        return `Membuka portal e-Proc ${name} di tab baru untuk Kak ${activeUser}.`;
+        return `Portal e-Proc ${name} ditemukan untuk Kak ${activeUser}.\nSilakan klik tautan berikut untuk membuka:\n${url}`;
       } else {
         return "e-Proc tersebut belum ada di database.";
       }
@@ -326,9 +324,8 @@ export default function Home() {
         
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(eprocReply);
+          const utterance = new SpeechSynthesisUtterance("Portal e-Proc ditemukan. Silakan cek tautan di layar.");
           utterance.lang = 'id-ID';
-          utterance.pitch = 1.3;
           window.speechSynthesis.speak(utterance);
         }
       }
@@ -408,9 +405,9 @@ export default function Home() {
   };
 
   const handleDelete = async (sheetName: string, rowIndex: number, nama: string) => {
-    if (!confirm(`Yakin menghapus "${nama}"? (Data akan masuk ke Sampah)`)) return;
+    if (!confirm(`Yakin menghapus "${nama}"?`)) return;
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "delete", sheetName, rowIndex }) });
-    fetchData();
+    fetchData(false);
   };
 
   const handleFileUpload = (e: any) => {
@@ -429,7 +426,6 @@ export default function Home() {
       return;
     }
 
-    setSearchLoading(true);
     try {
       let instruksiKhusus = "";
       if (optBedahRks) instruksiKhusus += "\n- BEDAH RKS: Ekstrak ringkasan, persyaratan kualifikasi, sertifikasi, dan strategi menang.";
@@ -458,7 +454,6 @@ export default function Home() {
         });
       }
     } catch (err: any) { setAiSearchResult(`Gagal memproses: ${err.message}`); }
-    setSearchLoading(false);
   };
 
   const parseRupiah = (val: string) => {
@@ -493,7 +488,10 @@ export default function Home() {
   });
 
   const safeTotal = totalNilaiPipeline || 1;
-  const pieChartStyle = { background: `conic-gradient(#ef4444 0% ${(hotVal/safeTotal)*100}%, #f59e0b ${(hotVal/safeTotal)*100}% ${((hotVal+warmVal)/safeTotal)*100}%, #3b82f6 ${((hotVal+warmVal)/safeTotal)*100}% ${((hotVal+warmVal+coldVal)/safeTotal)*100}%, #64748b ${((hotVal+warmVal+coldVal)/safeTotal)*100}% 100%)` };
+  const pHot = (hotVal / safeTotal) * 100;
+  const pWarm = pHot + (warmVal / safeTotal) * 100;
+  const pCold = pWarm + (coldVal / safeTotal) * 100;
+  const pieChartStyle = { background: `conic-gradient(#f43f5e 0% ${pHot}%, #f59e0b ${pHot}% ${pWarm}%, #3b82f6 ${pWarm}% ${pCold}%, #64748b ${pCold}% 100%)` };
 
   const currentActiveSession = chatSessions.find(s => s.id === currentSessionId);
 
@@ -874,7 +872,7 @@ export default function Home() {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (Aktif: {activeUser})</h3>
-                  <p className="text-xs text-pink-200 mt-1">Katakan perintah seperti: &quot;Buka e-Proc LPS&quot;.</p>
+                  <p className="text-xs text-pink-200 mt-1">Ketik/Katakan: &quot;Buka e-Proc LPS&quot; (LISA akan menampilkan link akses langsung di chat).</p>
                 </div>
                 <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
@@ -978,7 +976,7 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <span className="text-slate-500">{cTanggal}</span>
                       <button onClick={() => { setEditIndexCatatan(i); setCatTopik(cTopik); setCatIsi(cIsi); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
-                      <button onClick={() => handleDelete("Catatan", i, cTopik)} className="text-rose-400">Hapus</button>
+                      <button onClick={() => handleDelete("Catatan", i, cTopik)} className="text-rose-400">Hapus</li>
                     </div>
                   </div>
                   <p className="text-slate-300 text-xs">{cIsi}</p>
