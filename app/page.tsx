@@ -7,7 +7,7 @@ export default function Home() {
     perusahaan: [], pengalaman: [], pipeline: [], catatan: [], rekaman: [], rekanan: [], tenagaAhli: [], riwayatAi: [], sampah: [], bedahRks: [], voiceProfiles: [] 
   });
   const [loading, setLoading] = useState(false);
-  const [activeUser, setActiveUser] = useState("Alda"); // Default user utama Anda
+  const [activeUser, setActiveUser] = useState("Alda");
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
@@ -67,13 +67,12 @@ export default function Home() {
   const [catTopik, setCatTopik] = useState("");
   const [catIsi, setCatIsi] = useState("");
 
-  // State AI Chat & Continuous Voice
+  // State AI Chat & Voice
   const [chatSessions, setChatSessions] = useState<{ id: string; title: string; messages: { role: string; content: string }[] }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
-  const recognitionRef = useRef<any>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // State AI Studio
@@ -109,9 +108,9 @@ export default function Home() {
 
       if (json.riwayatAi && json.riwayatAi.length > 0) {
         const parsedSessions = json.riwayatAi.map((row: any) => ({
-          id: row.SessionID?.toString() || Date.now().toString(),
-          title: row.JudulSesi || "Sesi Tanpa Judul",
-          messages: row.MessagesJSON ? JSON.parse(row.MessagesJSON) : []
+          id: row.SessionID?.toString() || row.sessionid || Date.now().toString(),
+          title: row.JudulSesi || row.judulsesi || "Sesi Tanpa Judul",
+          messages: row.MessagesJSON ? JSON.parse(row.MessagesJSON) : (row.messagesjson ? JSON.parse(row.messagesjson) : [])
         }));
         parsedSessions.sort((a:any, b:any) => Number(b.id) - Number(a.id));
         setChatSessions(parsedSessions);
@@ -218,8 +217,8 @@ export default function Home() {
     if (!selectedAhliForCv) { alert("Pilih tenaga ahli terlebih dahulu!"); return; }
     setCvLoading(true);
     try {
-      const targetAhli = dataAll.tenagaAhli.find((a: any) => a.Nama === selectedAhliForCv);
-      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional yang elegan dan persuasif untuk tender:\n- Nama: ${targetAhli?.Nama}, Posisi: ${targetAhli?.PosisiUtama}, Sertifikasi: ${targetAhli?.Sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman}\nTarget Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
+      const targetAhli = dataAll.tenagaAhli.find((a: any) => (a.Nama || a.nama) === selectedAhliForCv);
+      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional yang elegan dan persuasif untuk tender:\n- Nama: ${targetAhli?.Nama || targetAhli?.nama}, Posisi: ${targetAhli?.PosisiUtama || targetAhli?.posisiutama}, Sertifikasi: ${targetAhli?.Sertifikasi || targetAhli?.sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman || targetAhli?.pengalaman}\nTarget Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -232,45 +231,51 @@ export default function Home() {
     setCvLoading(false);
   };
 
-  // Fungsi Deteksi & Pendaftaran Pengenal Suara Baru (Speaker Recognition Biometrics)
-  const handleVoiceSpeakerIdentification = async (spokenText: string) => {
-    const textLower = spokenText.toLowerCase();
-    
-    // Jika ada sapaan / perkenalan nama baru
-    if (textLower.includes("nama saya") || textLower.includes("ini") || textLower.includes("saya")) {
-      // Contoh tangkapan sederhana dari ujaran suara
-      let detectedName = "";
-      if (textLower.includes("alda")) {
-        detectedName = "Alda";
-      } else {
-        // Ambil kata setelah "nama saya" atau "aku"
-        const words = spokenText.split(" ");
-        const idx = words.findIndex(w => w.toLowerCase() === "saya" || w.toLowerCase() === "aku" || w.toLowerCase() === "ini");
-        if (idx > -1 && words[idx + 1]) {
-          detectedName = words[idx + 1];
-        }
-      }
+  // Logika Perintah e-Proc & Cek Database
+  const checkAndExecuteEprocCommand = (text: string) => {
+    const lower = text.toLowerCase();
+    if (lower.includes("buka eproc") || lower.includes("buka e-proc") || lower.includes("buka portal")) {
+      // Cari nama perusahaan setelah kata perintah
+      const foundComp = dataAll.perusahaan.find((p: any) => {
+        const name = (p.NamaPerusahaan || p.namaperusahaan || "").toLowerCase();
+        return lower.includes(name);
+      });
 
-      if (detectedName && detectedName.toLowerCase() !== activeUser.toLowerCase()) {
-        setActiveUser(detectedName);
-        // Cek apakah sudah ada di sheet Voice Profiles
-        const existing = dataAll.voiceProfiles.find((v: any) => v.NamaUser?.toLowerCase() === detectedName.toLowerCase());
-        if (!existing) {
-          // Daftarkan ke sheet Voice Profiles otomatis
-          await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({ type: "Voice Profiles", action: "register", voiceId: "v_" + Date.now(), namaUser: detectedName })
-          });
-        }
+      if (foundComp) {
+        const url = foundComp.URL || foundComp.url;
+        const name = foundComp.NamaPerusahaan || foundComp.namaperusahaan;
+        window.open(url, "_blank");
+        return `Membuka portal e-Proc ${name} untuk Kak ${activeUser}.`;
+      } else {
+        return "e-Proc tersebut belum ada di database.";
       }
     }
+    return null;
   };
 
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
-    
-    // Cek identitas suara / sapaan
-    await handleVoiceSpeakerIdentification(textToSend);
+
+    // Cek perintah buka e-proc via suara/teks
+    const eprocReply = checkAndExecuteEprocCommand(textToSend);
+    if (eprocReply) {
+      const currentSession = chatSessions.find(s => s.id === currentSessionId);
+      if (currentSession) {
+        const updatedMessages = [...currentSession.messages, { role: 'user', content: textToSend }, { role: 'model', content: eprocReply }];
+        const updatedSessions = chatSessions.map(s => s.id === currentSessionId ? { ...s, messages: updatedMessages } : s);
+        setChatSessions(updatedSessions);
+        saveSessionToCloud(currentSession.id, currentSession.title, updatedMessages);
+        
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(eprocReply);
+          utterance.lang = 'id-ID';
+          utterance.pitch = 1.3;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+      return;
+    }
 
     const currentSession = chatSessions.find(s => s.id === currentSessionId);
     if (!currentSession) return;
@@ -284,8 +289,7 @@ export default function Home() {
 
     try {
       const historyContext = updatedMessages.map(m => `${m.role === 'user' ? 'User' : 'LISA'}: ${m.content}`).join("\n");
-      // Instruksi agar jawaban lisan singkat, ramah, dan memanggil nama user aktif
-      const promptText = `Anda adalah LISA (Lead Intelligence & Sales Assistant), asisten AI sales profesional berkarakter feminin, cerdas, elegan, dan santun. Panggil pengguna dengan sapaan "Kak ${activeUser}". Jika pengguna menyapa atau bertanya singkat, BERIKAN JAWABAN SINGKAT, PADAT, dan ELEGAN (maksimal 1-2 kalimat). Riwayat:\n${historyContext}`;
+      const promptText = `Anda adalah LISA, asisten AI sales profesional berkarakter feminin, cerdas, elegan, dan santun. Panggil pengguna dengan sapaan "Kak ${activeUser}". Berikan jawaban SINGKAT, PADAT, dan ELEGAN (maksimal 1-2 kalimat). Riwayat:\n${historyContext}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -306,13 +310,6 @@ export default function Home() {
         utterance.lang = 'id-ID';
         utterance.pitch = 1.3; 
         utterance.rate = 1.05;
-        
-        utterance.onend = () => {
-          if (voiceActive && recognitionRef.current) {
-            try { recognitionRef.current.start(); } catch(e) {}
-          }
-        };
-
         window.speechSynthesis.speak(utterance);
       }
     } catch (err: any) {
@@ -329,40 +326,42 @@ export default function Home() {
     processAndSendChat(text);
   };
 
-  const toggleContinuousVoice = () => {
+  // Push-to-Talk Voice (Klik sekali bicara, klik lagi untuk bicara berikutnya)
+  const startSingleVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Browser Anda tidak mendukung Voice Recognition.");
       return;
     }
 
-    if (voiceActive) {
-      setVoiceActive(false);
-      if (recognitionRef.current) recognitionRef.current.stop();
-      alert("Mode Asisten Suara Continuous dimatikan.");
-    } else {
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'id-ID';
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => {
       setVoiceActive(true);
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = 'id-ID';
-      recognition.continuous = false;
-      recognition.interimResults = false;
+    };
 
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) processAndSendChat(transcript);
-      };
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setVoiceActive(false);
+      if (transcript) {
+        processAndSendChat(transcript);
+      }
+    };
 
-      recognition.onerror = () => {
-        if (voiceActive) { try { recognition.start(); } catch(e) {} }
-      };
+    recognition.onerror = () => {
+      setVoiceActive(false);
+    };
 
-      recognition.onend = () => {
-        if (voiceActive) { try { recognition.start(); } catch(e) {} }
-      };
+    recognition.onend = () => {
+      setVoiceActive(false);
+    };
 
+    try {
       recognition.start();
-      alert(`🎤 Mode Suara Aktif! Halo Kak ${activeUser}, LISA mendengarkan...`);
+    } catch(e) {
+      setVoiceActive(false);
     }
   };
 
@@ -422,26 +421,29 @@ export default function Home() {
 
   const parseRupiah = (val: string) => {
     if (!val) return 0;
-    return Number(val.replace(/[^0-9]/g, "")) || 0;
+    return Number(val.toString().replace(/[^0-9]/g, "")) || 0;
   };
   const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
 
   const filteredPengalaman = dataAll.pengalaman.filter((item: any) => {
-    const matchIndustri = filterIndustri === "Semua" || item.JenisIndustri === filterIndustri;
+    const jenis = item.JenisIndustri || item.jenisindustri || "";
+    const matchIndustri = filterIndustri === "Semua" || jenis === filterIndustri;
     const keyword = filterKeyword.toLowerCase();
+    const pekerjaan = item.NamaPekerjaan || item.namapekerjaan || "";
+    const perusahaan = item.NamaPerusahaan || item.namaperusahaan || "";
+    const ket = item.Keterangan || item.keterangan || "";
     const matchKeyword = !keyword || 
-      item.NamaPekerjaan?.toLowerCase().includes(keyword) || 
-      item.NamaPerusahaan?.toLowerCase().includes(keyword) || 
-      item.Keterangan?.toLowerCase().includes(keyword);
+      pekerjaan.toLowerCase().includes(keyword) || 
+      perusahaan.toLowerCase().includes(keyword) || 
+      ket.toLowerCase().includes(keyword);
     return matchIndustri && matchKeyword;
   });
 
-  // Perbaikan Kalkulasi Pipeline & Pie Chart agar langsung akurat
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const val = parseRupiah(p.EstimasiNilaiProjek || p.EstimasiNilai || p.EstimasiNilaiProjek);
+    const val = parseRupiah(p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || 0);
     totalNilaiPipeline += val;
-    const status = (p.Status || "Cold").toString().trim();
+    const status = (p.Status || p.status || "Cold").toString().trim();
     if (status === "Hot") hotVal += val; 
     else if (status === "Warm") warmVal += val; 
     else if (status === "Gagal") gagalVal += val; 
@@ -458,7 +460,6 @@ export default function Home() {
       <header className="w-full bg-gradient-to-r from-pink-900 via-purple-900 to-indigo-950 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem] border-b border-pink-500/30">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           <div className="flex items-center gap-4">
-            {/* Siluet Vektor Dewasa, Elegan & Seksi ala Lisa BLACKPINK */}
             <div className="w-16 h-16 rounded-full bg-pink-500/20 border-2 border-pink-400/50 flex items-center justify-center shadow-2xl shrink-0 backdrop-blur-md overflow-hidden p-1">
               <svg viewBox="0 0 100 100" className="w-12 h-12 fill-pink-300 drop-shadow-md">
                 <path d="M50 10 C35 10 25 22 25 38 C25 45 28 52 33 58 L30 75 C30 82 38 88 50 88 C62 88 70 82 70 75 L67 58 C72 52 75 45 75 38 C75 22 65 10 50 10 Z M42 22 C45 22 47 25 47 28 C47 31 45 34 42 34 C39 34 37 31 37 28 C37 25 39 22 42 22 Z M58 22 C61 22 63 25 63 28 C63 31 61 34 58 34 C55 34 53 31 53 28 C53 25 55 22 58 22 Z M50 42 C54 42 57 45 57 49 C57 53 54 55 50 55 C46 55 43 53 43 49 C43 45 46 42 50 42 Z"/>
@@ -510,31 +511,38 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {dataAll.perusahaan.map((item: any, i: number) => (
+              {dataAll.perusahaan.map((item: any, i: number) => {
+                const namaComp = item.NamaPerusahaan || item.namaperusahaan || "";
+                const jenisComp = item.Jenis || item.jenis || "";
+                const statusR = item.StatusRekanan || item.statusrekanan || "Belum";
+                const pernahP = item.PernahAdaProjek || item.pernahadaprojek || "Belum";
+                const urlComp = item.URL || item.url || "#";
+
+                return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow-xl flex flex-col justify-between gap-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
-                      <h3 className="font-extrabold text-lg text-white">{item.NamaPerusahaan}</h3>
-                      <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-pink-950 text-pink-300 border border-pink-500/30">{item.Jenis}</span>
+                      <h3 className="font-extrabold text-lg text-white">{namaComp}</h3>
+                      <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-pink-950 text-pink-300 border border-pink-500/30">{jenisComp}</span>
                     </div>
                     <div className="space-y-1 text-xs font-medium text-slate-400">
-                      <p>Status Rekanan: <strong className="text-pink-400">{item.StatusRekanan || "Belum"}</strong></p>
-                      <p>Riwayat Projek: <strong className="text-purple-400">{item.PernahAdaProjek || "Belum"}</strong></p>
+                      <p>Status Rekanan: <strong className="text-pink-400">{statusR}</strong></p>
+                      <p>Riwayat Projek: <strong className="text-purple-400">{pernahP}</strong></p>
                     </div>
                   </div>
                   <div className="flex flex-col gap-3 pt-4 border-t border-slate-800">
                     <div className="flex justify-between items-center w-full">
                       <div className="flex gap-3 text-xs font-bold">
-                        <button onClick={() => { setEditIndexP(i); setNamaP(item.NamaPerusahaan); setJenisP(item.Jenis); setUrlP(item.URL); setStatusRek(item.StatusRekanan || "Belum"); setPernahProj(item.PernahAdaProjek || "Belum"); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
-                        <button onClick={() => handleDelete("Daftar Perusahaan", i, item.NamaPerusahaan)} className="text-rose-400">Hapus</button>
+                        <button onClick={() => { setEditIndexP(i); setNamaP(namaComp); setJenisP(jenisComp); setUrlP(urlComp); setStatusRek(statusR); setPernahProj(pernahP); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
+                        <button onClick={() => handleDelete("Daftar Perusahaan", i, namaComp)} className="text-rose-400">Hapus</button>
                       </div>
                     </div>
-                    <button onClick={() => handleOpenEproc(item.NamaPerusahaan, item.URL)} className="w-full text-white px-5 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-teal-500 to-emerald-600 shadow-lg flex items-center justify-center gap-2">
-                      <span>Buka e-Proc (Laptop/TV) ↗</span>
+                    <button onClick={() => handleOpenEproc(namaComp, urlComp)} className="w-full text-white px-5 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-teal-500 to-emerald-600 shadow-lg flex items-center justify-center gap-2">
+                      <span>Buka e-Proc ↗</span>
                     </button>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -563,7 +571,7 @@ export default function Home() {
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-1">Nama Klien:</label>
                     <input type="text" list="daftar-perusahaan" placeholder="Pilih atau ketik klien..." className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl outline-none" value={pipePerusahaan} onChange={e => setPipePerusahaan(e.target.value)} required />
-                    <datalist id="daftar-perusahaan">{dataAll.perusahaan.map((p: any, i: number) => <option key={i} value={p.NamaPerusahaan} />)}</datalist>
+                    <datalist id="daftar-perusahaan">{dataAll.perusahaan.map((p: any, i: number) => <option key={i} value={p.NamaPerusahaan || p.namaperusahaan} />)}</datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-1">Nama Projek / Pengadaan:</label>
@@ -586,18 +594,26 @@ export default function Home() {
             </div>
 
             <div className="space-y-5">
-              {dataAll.pipeline.map((p: any, i: number) => (
+              {dataAll.pipeline.map((p: any, i: number) => {
+                const pComp = p.NamaPerusahaan || p.namaperusahaan || "";
+                const pProjek = p.NamaProjek || p.namaprojek || "";
+                const pNilai = p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || "-";
+                const pTayang = p.TanggalEstimasiTayangTender || p.tanggalestimasitayangtender || "-";
+                const pTahap = p.Tahapan || p.tahapan || "1. Eksplorasi";
+                const pStat = p.Status || p.status || "Cold";
+
+                return (
                 <div key={i} className="p-6 rounded-[2rem] border border-slate-800 shadow-lg flex flex-col gap-4 bg-slate-900/90">
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                     <div>
-                      <span className="text-[10px] font-black text-slate-400 uppercase">{p.NamaPerusahaan}</span>
-                      <h3 className="font-extrabold text-lg text-white">{p.NamaProjek}</h3>
+                      <span className="text-[10px] font-black text-slate-400 uppercase">{pComp}</span>
+                      <h3 className="font-extrabold text-lg text-white">{pProjek}</h3>
                     </div>
                     <div className="flex flex-wrap gap-2 items-center">
-                      <select id={`tahapan-${i}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={p.Tahapan || "1. Eksplorasi"}>
+                      <select id={`tahapan-${i}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={pTahap}>
                         <option>1. Eksplorasi</option><option>3. Penawaran</option><option>5. Tender Tayang</option><option>7. Menang</option>
                       </select>
-                      <select id={`status-${i}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={p.Status || "Cold"}>
+                      <select id={`status-${i}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={pStat}>
                         <option value="Hot">🔥 Hot</option><option value="Warm">☀️ Warm</option><option value="Cold">❄️ Cold</option><option value="Gagal">❌ Gagal</option>
                       </select>
                       <button 
@@ -609,14 +625,14 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-xs bg-slate-800/50 p-3 rounded-xl border border-slate-800">
-                    <div>💰 Nilai: <strong className="text-emerald-400">{p.EstimasiNilaiProjek || p.EstimasiNilai || "-"}</strong></div>
-                    <div>📅 Tayang: <strong>{p.TanggalEstimasiTayangTender || "-"}</strong></div>
+                    <div>💰 Nilai: <strong className="text-emerald-400">{pNilai}</strong></div>
+                    <div>📅 Tayang: <strong>{pTayang}</strong></div>
                   </div>
                   <div className="flex justify-end gap-3 text-xs font-bold pt-1">
-                    <button onClick={() => handleDelete("Pipeline", i, p.NamaProjek)} className="text-rose-400">Hapus</button>
+                    <button onClick={() => handleDelete("Pipeline", i, pProjek)} className="text-rose-400">Hapus</button>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -664,17 +680,26 @@ export default function Home() {
             </div>
 
             <div className="space-y-4">
-              {filteredPengalaman.map((item:any, i:number)=>(
+              {filteredPengalaman.map((item:any, i:number)=>{
+                const ePekerjaan = item.NamaPekerjaan || item.namapekerjaan || "";
+                const ePerusahaan = item.NamaPerusahaan || item.namaperusahaan || "";
+                const eJenis = item.JenisIndustri || item.jenisindustri || "";
+                const eMulai = item.TanggalMulai || item.tanggalmulai || "-";
+                const eDurasi = item.DurasiPekerjaan || item.durasipekerjaan || "-";
+                const eNilai = item.NilaiProjek || item.nilaiprojek || "-";
+                const eKet = item.Keterangan || item.keterangan || "";
+
+                return (
                 <div key={i} className="p-6 bg-slate-900/90 rounded-3xl border border-slate-800 shadow flex flex-col md:flex-row justify-between gap-4">
                   <div>
-                    <h4 className="font-black text-white text-base">{item.NamaPekerjaan}</h4>
-                    <p className="text-xs font-bold text-pink-400 mt-1">{item.NamaPerusahaan} • <span className="bg-pink-950 px-2 py-0.5 rounded text-pink-300 border border-pink-500/30">{item.JenisIndustri}</span></p>
-                    <p className="text-xs text-slate-400 mt-2">Mulai: <strong>{item.TanggalMulai || "-"}</strong> | Durasi: <strong>{item.DurasiPekerjaan || "-"}</strong> | Nilai: <strong className="text-emerald-400">{item.NilaiProjek || "-"}</strong></p>
-                    {item.Keterangan && <p className="text-xs bg-slate-800/60 p-2.5 rounded-xl mt-2 text-slate-300">💬 {item.Keterangan}</p>}
+                    <h4 className="font-black text-white text-base">{ePekerjaan}</h4>
+                    <p className="text-xs font-bold text-pink-400 mt-1">{ePerusahaan} • <span className="bg-pink-950 px-2 py-0.5 rounded text-pink-300 border border-pink-500/30">{eJenis}</span></p>
+                    <p className="text-xs text-slate-400 mt-2">Mulai: <strong>{eMulai}</strong> | Durasi: <strong>{eDurasi}</strong> | Nilai: <strong className="text-emerald-400">{eNilai}</strong></p>
+                    {eKet && <p className="text-xs bg-slate-800/60 p-2.5 rounded-xl mt-2 text-slate-300">💬 {eKet}</p>}
                   </div>
-                  <button onClick={() => handleDelete("Pengalaman", i, item.NamaPekerjaan)} className="text-xs font-bold text-rose-400 self-start">Hapus</button>
+                  <button onClick={() => handleDelete("Pengalaman", i, ePekerjaan)} className="text-xs font-bold text-rose-400 self-start">Hapus</button>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -697,7 +722,6 @@ export default function Home() {
               </form>
             </div>
 
-            {/* FITUR GENERATOR CV DIKEMBALIKAN */}
             <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl border border-pink-500/20 space-y-6">
               <div>
                 <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">📄 Generator CV Tender AI</h3>
@@ -706,7 +730,11 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <select className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-white outline-none" value={selectedAhliForCv} onChange={e => setSelectedAhliForCv(e.target.value)} required>
                     <option value="" className="text-slate-800">-- Pilih Personil --</option>
-                    {dataAll.tenagaAhli?.map((a: any, idx: number) => <option key={idx} value={a.Nama} className="text-white">{a.Nama} ({a.PosisiUtama})</option>)}
+                    {dataAll.tenagaAhli?.map((a: any, idx: number) => {
+                      const aNama = a.Nama || a.nama || "";
+                      const aPosisi = a.PosisiUtama || a.posisiutama || "";
+                      return <option key={idx} value={aNama} className="text-white">{aNama} ({aPosisi})</option>;
+                    })}
                   </select>
                   <input type="text" placeholder="Syarat Tender (opsional)..." className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-white outline-none" value={tenderReqForAhli} onChange={e => setTenderReqForAhli(e.target.value)} />
                 </div>
@@ -724,24 +752,30 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {dataAll.tenagaAhli?.map((a: any, i: number) => (
+              {dataAll.tenagaAhli?.map((a: any, i: number) => {
+                const aNama = a.Nama || a.nama || "";
+                const aPosisi = a.PosisiUtama || a.posisiutama || "";
+                const aSertif = a.Sertifikasi || a.sertifikasi || "";
+                const aPengalaman = a.Pengalaman || a.pengalaman || "";
+
+                return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow space-y-2">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h4 className="font-black text-white text-base">{a.Nama}</h4>
-                      <p className="text-xs font-bold text-pink-400">{a.PosisiUtama}</p>
+                      <h4 className="font-black text-white text-base">{aNama}</h4>
+                      <p className="text-xs font-bold text-pink-400">{aPosisi}</p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => { setEditIndexAhli(i); setAhliNama(a.Nama); setAhliPosisi(a.PosisiUtama); setAhliSertif(a.Sertifikasi); setAhliPengalaman(a.Pengalaman); setAhliKontak(a.NoKontak || ""); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-xs font-bold text-pink-400">Edit</button>
-                      <button onClick={() => handleDelete("Tenaga Ahli", i, a.Nama)} className="text-xs font-bold text-rose-400">Hapus</button>
+                      <button onClick={() => { setEditIndexAhli(i); setAhliNama(aNama); setAhliPosisi(aPosisi); setAhliSertif(aSertif); setAhliPengalaman(aPengalaman); setAhliKontak(a.NoKontak || a.nokontak || ""); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-xs font-bold text-pink-400">Edit</button>
+                      <button onClick={() => handleDelete("Tenaga Ahli", i, aNama)} className="text-xs font-bold text-rose-400">Hapus</button>
                     </div>
                   </div>
                   <div className="text-xs space-y-1 bg-slate-800/50 p-3 rounded-xl border border-slate-800">
-                    <p>🏆 Sertifikasi: <strong className="text-white">{a.Sertifikasi}</strong></p>
-                    <p>💼 Pengalaman: <span className="text-slate-300">{a.Pengalaman}</span></p>
+                    <p>🏆 Sertifikasi: <strong className="text-white">{aSertif}</strong></p>
+                    <p>💼 Pengalaman: <span className="text-slate-300">{aPengalaman}</span></p>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -764,18 +798,24 @@ export default function Home() {
               </form>
             </div>
             <div className="space-y-4">
-              {dataAll.rekanan.map((r: any, i: number) => (
+              {dataAll.rekanan.map((r: any, i: number) => {
+                const rNama = r.NamaRekanan || r.namarekanan || "";
+                const rHarga = r.HargaProduk || r.hargaproduk || "-";
+                const rPic = r.PIC || r.pic || "";
+                const rTelp = r.NoTelp || r.notelp || "-";
+
+                return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow">
                   <div className="flex justify-between font-bold text-white text-base mb-2">
-                    <span>{r.NamaRekanan}</span>
-                    <button onClick={() => handleDelete("Rekanan", i, r.NamaRekanan)} className="text-xs text-rose-400">Hapus</button>
+                    <span>{rNama}</span>
+                    <button onClick={() => handleDelete("Rekanan", i, rNama)} className="text-xs text-rose-400">Hapus</button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs bg-slate-800/50 p-4 rounded-2xl border border-slate-800">
-                    <div>💵 Harga: <strong className="text-emerald-400">{r.HargaProduk || "-"}</strong></div>
-                    <div>👥 PIC: <strong className="text-pink-300">{r.PIC}</strong> ({r.NoTelpPIC})</div>
+                    <div>💵 Harga: <strong className="text-emerald-400">{rHarga}</strong></div>
+                    <div>👥 PIC: <strong className="text-pink-300">{rPic}</strong> ({rTelp})</div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -786,7 +826,7 @@ export default function Home() {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (Aktif: {activeUser})</h3>
-                  <p className="text-xs text-pink-200 mt-1">LISA mengenali suara Anda, merespon singkat, dan mendaftarkan user baru.</p>
+                  <p className="text-xs text-pink-200 mt-1">Katakan perintah seperti: &quot;Buka e-Proc Telkom&quot;.</p>
                 </div>
                 <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
@@ -817,13 +857,13 @@ export default function Home() {
               <form onSubmit={handleSendChat} className="flex gap-2 items-center">
                 <button 
                   type="button" 
-                  onClick={toggleContinuousVoice} 
-                  title="Voice Assistant Continuous"
-                  className={`p-4 rounded-2xl text-white font-bold text-sm shadow shrink-0 transition ${voiceActive ? 'bg-rose-600 ring-4 ring-rose-400/50 animate-pulse' : 'bg-pink-600 hover:bg-pink-700'}`}
+                  onClick={startSingleVoiceInput} 
+                  title="Klik untuk Bicara"
+                  className={`p-4 rounded-2xl text-white font-bold text-sm shadow shrink-0 transition ${voiceActive ? 'bg-rose-600 ring-4 ring-rose-400/50 animate-bounce' : 'bg-pink-600 hover:bg-pink-700'}`}
                 >
-                  {voiceActive ? "🛑" : "🎙️"}
+                  {voiceActive ? "🎙️..." : "🎙️"}
                 </button>
-                <input type="text" placeholder="Ketik pesan..." className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
+                <input type="text" placeholder="Ketik pesan atau perintah (misal: Buka e-Proc Telkom)..." className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
                 <button type="submit" className="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-4 rounded-2xl font-bold text-xs shadow-lg shrink-0">Kirim</button>
               </form>
             </div>
@@ -878,19 +918,24 @@ export default function Home() {
               </form>
             </div>
             <div className="space-y-3">
-              {dataAll.catatan.map((c: any, i: number) => (
+              {dataAll.catatan.map((c: any, i: number) => {
+                const cTopik = c.Topik || c.topik || "";
+                const cTanggal = c.Tanggal || c.tanggal || "";
+                const cIsi = c.IsiCatatan || c.isicatatan || "";
+
+                return (
                 <div key={i} className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow space-y-2">
                   <div className="flex justify-between items-center font-bold text-xs text-pink-400">
-                    <span>{c.Topik}</span>
+                    <span>{cTopik}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-slate-500">{c.Tanggal}</span>
-                      <button onClick={() => { setEditIndexCatatan(i); setCatTopik(c.Topik); setCatIsi(c.IsiCatatan); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
-                      <button onClick={() => handleDelete("Catatan", i, c.Topik)} className="text-rose-400">Hapus</button>
+                      <span className="text-slate-500">{cTanggal}</span>
+                      <button onClick={() => { setEditIndexCatatan(i); setCatTopik(cTopik); setCatIsi(cIsi); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
+                      <button onClick={() => handleDelete("Catatan", i, cTopik)} className="text-rose-400">Hapus</button>
                     </div>
                   </div>
-                  <p className="text-slate-300 text-xs">{c.IsiCatatan}</p>
+                  <p className="text-slate-300 text-xs">{cIsi}</p>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
