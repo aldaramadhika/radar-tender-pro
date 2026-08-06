@@ -32,10 +32,10 @@ export default function Home() {
   // State Portofolio
   const [editIndexExp, setEditIndexExp] = useState<number | null>(null);
   const [expPerusahaan, setExpPerusahaan] = useState("");
-  const [expIndustri, setExpIndustri] = useState("IT & Software");
+  const [expIndustri, setExpIndustri] = useState("IT Masterplan / EA");
   const [expPekerjaan, setExpPekerjaan] = useState("");
-  const [expTahun, setExpTahun] = useState(new Date().getFullYear().toString());
-  const [expLama, setExpLama] = useState("3 Bulan");
+  const [expTglMulai, setExpTglMulai] = useState(new Date().toISOString().split('T')[0]);
+  const [expDurasi, setExpDurasi] = useState("3 Bulan");
   const [expNilai, setExpNilai] = useState("");
   const [expKet, setExpKet] = useState("");
   const [filterIndustri, setFilterIndustri] = useState("Semua");
@@ -52,6 +52,7 @@ export default function Home() {
   const [rekKet, setRekKet] = useState("");
 
   // State Tenaga Ahli
+  const [editIndexAhli, setEditIndexAhli] = useState<number | null>(null);
   const [ahliNama, setAhliNama] = useState("");
   const [ahliPosisi, setAhliPosisi] = useState("");
   const [ahliSertif, setAhliSertif] = useState("");
@@ -63,7 +64,7 @@ export default function Home() {
   const [cvResult, setCvResult] = useState("");
   const [cvLoading, setCvLoading] = useState(false);
 
-  // State AI Chat Sessions (Cloud Synchronized)
+  // State AI Chat Sessions
   const [chatSessions, setChatSessions] = useState<{ id: string; title: string; messages: { role: string; content: string }[] }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [chatInput, setChatInput] = useState("");
@@ -92,7 +93,20 @@ export default function Home() {
     try {
       const res = await fetch(`${API_URL}?action=getAll`);
       const json = await res.json();
-      setDataAll(json);
+      
+      // Sanitasi data agar tidak undefined jika sheet kosong
+      setDataAll({
+        perusahaan: json.perusahaan || [],
+        pengalaman: json.pengalaman || [],
+        pipeline: json.pipeline || [],
+        catatan: json.catatan || [],
+        rekaman: json.rekaman || [],
+        rekanan: json.rekanan || [],
+        tenagaAhli: json.tenagaAhli || [],
+        riwayatAi: json.riwayatAi || [],
+        sampah: json.sampah || [],
+        bedahRks: json.bedahRks || []
+      });
 
       if (json.riwayatAi && json.riwayatAi.length > 0) {
         const parsedSessions = json.riwayatAi.map((row: any) => ({
@@ -100,21 +114,17 @@ export default function Home() {
           title: row.JudulSesi || "Sesi Tanpa Judul",
           messages: row.MessagesJSON ? JSON.parse(row.MessagesJSON) : []
         }));
-        
         parsedSessions.sort((a:any, b:any) => Number(b.id) - Number(a.id));
         setChatSessions(parsedSessions);
-        if (!currentSessionId) setCurrentSessionId(parsedSessions[0].id);
+        if (!currentSessionId && parsedSessions.length > 0) setCurrentSessionId(parsedSessions[0].id);
       } else {
         if(chatSessions.length === 0) createNewChatSession();
       }
-
     } catch (e) { console.log("Gagal memuat data dari Sheets"); }
     setLoading(false);
   };
 
-  useEffect(() => { 
-    fetchData(); 
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -138,7 +148,7 @@ export default function Home() {
   const createNewChatSession = () => {
     const newId = Date.now().toString();
     const newTitle = `Diskusi ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})} - ${new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}`;
-    const initialMsg = [{ role: 'model', content: 'Halo! Saya AI Tender Assistant PT Millennia Solusi Informatika. Ada dokumen tender atau strategi yang ingin didiskusikan hari ini?' }];
+    const initialMsg = [{ role: 'model', content: 'Halo! Saya LISA (Lead Intelligence & Sales Assistant), siap membantu menyusun strategi tender, pitch deck, dan proposal Anda.' }];
     
     const newSession = { id: newId, title: newTitle, messages: initialMsg };
     setChatSessions([newSession, ...chatSessions]);
@@ -148,7 +158,7 @@ export default function Home() {
 
   const deleteChatSession = async (id: string, e: any) => {
     e.stopPropagation();
-    if (!confirm("Hapus riwayat obrolan ini dari server Cloud?")) return;
+    if (!confirm("Hapus obrolan ini? (Data akan dipindahkan ke sheet Sampah)")) return;
 
     const filtered = chatSessions.filter(s => s.id !== id);
     setChatSessions(filtered);
@@ -162,6 +172,7 @@ export default function Home() {
       method: "POST", 
       body: JSON.stringify({ type: "Riwayat AI", action: "deleteSession", sessionID: id }) 
     });
+    alert("Obrolan berhasil dipindahkan ke Sampah!");
   };
 
   const handleOpenEproc = async (namaPerusahaan: string, url: string) => {
@@ -179,9 +190,8 @@ export default function Home() {
 
   const handleSavePipeline = async (e: any) => {
     e.preventDefault();
-    const actionType = editIndexPipe !== null ? "edit" : "add";
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: actionType, rowIndex: editIndexPipe, namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
-    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipe(null); fetchData();
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "add", namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
+    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); fetchData();
   };
 
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
@@ -192,22 +202,21 @@ export default function Home() {
 
   const handleSavePengalaman = async (e: any) => {
     e.preventDefault();
-    const actionType = editIndexExp !== null ? "edit" : "add";
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pengalaman", action: actionType, rowIndex: editIndexExp, namaPerusahaan: expPerusahaan, jenisIndustri: expIndustri, namaPekerjaan: expPekerjaan, tahunPelaksanaan: expTahun, lamaPekerjaan: expLama, nilaiProjek: expNilai, keterangan: expKet }) });
-    setExpPerusahaan(""); setExpPekerjaan(""); setExpNilai(""); setExpKet(""); setEditIndexExp(null); fetchData();
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pengalaman", action: "add", namaPerusahaan: expPerusahaan, jenisIndustri: expIndustri, namaPekerjaan: expPekerjaan, tanggalMulai: expTglMulai, durasiPekerjaan: expDurasi, nilaiProjek: expNilai, keterangan: expKet }) });
+    setExpPerusahaan(""); setExpPekerjaan(""); setExpNilai(""); setExpKet(""); fetchData();
   };
 
   const handleSaveRekanan = async (e: any) => {
     e.preventDefault();
-    const actionType = editIndexRekanan !== null ? "edit" : "add";
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Rekanan", action: actionType, rowIndex: editIndexRekanan, namaRekanan: rekNama, produkRekanan: rekProduk, hargaProduk: rekHarga, pic: rekPic, noTelp: rekTelp, terakhirVisit: rekVisit, keterangan: rekKet }) });
-    setRekNama(""); setRekProduk(""); setRekHarga(""); setRekPic(""); setRekTelp(""); setRekVisit(""); setRekKet(""); setEditIndexRekanan(null); fetchData();
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Rekanan", action: "add", namaRekanan: rekNama, produkRekanan: rekProduk, hargaProduk: rekHarga, pic: rekPic, noTelp: rekTelp, keterangan: rekKet }) });
+    setRekNama(""); setRekProduk(""); setRekHarga(""); setRekPic(""); setRekTelp(""); setRekKet(""); fetchData();
   };
 
   const handleSaveTenagaAhli = async (e: any) => {
     e.preventDefault();
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Tenaga Ahli", action: "add", nama: ahliNama, posisi: ahliPosisi, sertifikasi: ahliSertif, pengalaman: ahliPengalaman, kontak: ahliKontak, keterangan: ahliKet }) });
-    setAhliNama(""); setAhliPosisi(""); setAhliSertif(""); setAhliPengalaman(""); setAhliKontak(""); setAhliKet(""); fetchData();
+    const actionType = editIndexAhli !== null ? "edit" : "add";
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Tenaga Ahli", action: actionType, rowIndex: editIndexAhli, nama: ahliNama, posisi: ahliPosisi, sertifikasi: ahliSertif, pengalaman: ahliPengalaman, kontak: ahliKontak, keterangan: ahliKet }) });
+    setAhliNama(""); setAhliPosisi(""); setAhliSertif(""); setAhliPengalaman(""); setAhliKontak(""); setAhliKet(""); setEditIndexAhli(null); fetchData();
     alert("Data Tenaga Ahli berhasil disimpan!");
   };
 
@@ -217,7 +226,7 @@ export default function Home() {
     setCvLoading(true);
     try {
       const targetAhli = dataAll.tenagaAhli.find((a: any) => a.Nama === selectedAhliForCv);
-      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist PT Millennia Solusi Informatika. Buatkan CV Profesional untuk tender:
+      const promptText = `Bertindaklah sebagai Senior HR & Proposal Tender Specialist. Buatkan CV Profesional untuk tender:
       - Nama: ${targetAhli?.Nama}, Posisi: ${targetAhli?.PosisiUtama}, Sertifikasi: ${targetAhli?.Sertifikasi}, Pengalaman: ${targetAhli?.Pengalaman}
       Target Kebutuhan Tender: "${tenderReqForAhli || 'Standar Proyek IT'}"`;
 
@@ -251,8 +260,8 @@ export default function Home() {
     saveSessionToCloud(currentSession.id, currentSession.title, updatedMessages);
 
     try {
-      const historyContext = updatedMessages.map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join("\n");
-      const promptText = `Anda adalah Asisten Tender Senior PT Millennia Solusi Informatika. Riwayat percakapan:\n${historyContext}\nJawab secara profesional dan jika diminta, buatkan struktur Pitch Deck atau Proposal Tender yang komprehensif.`;
+      const historyContext = updatedMessages.map(m => `${m.role === 'user' ? 'User' : 'LISA'}: ${m.content}`).join("\n");
+      const promptText = `Anda adalah LISA (Lead Intelligence & Sales Assistant), asisten AI sales profesional berkarakter feminin, cerdas, ramah, dan santun. Riwayat percakapan:\n${historyContext}\nJawab dengan gaya bahasa yang profesional, elegan, persuasif, dan membantu.`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST",
@@ -268,9 +277,13 @@ export default function Home() {
       setChatSessions(finalSessions);
       saveSessionToCloud(currentSession.id, currentSession.title, finalMessages);
 
+      // Suara AI (Voice Assistant mendekati karakteristik feminin/lembut)
       if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(aiReply.replace(/[#_*`-]/g, "").slice(0, 300));
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(aiReply.replace(/[#_*`-]/g, "").slice(0, 350));
         utterance.lang = 'id-ID';
+        utterance.pitch = 1.3; // Pitch sedikit lebih tinggi/feminin
+        utterance.rate = 1.05; // Kecepatan natural
         window.speechSynthesis.speak(utterance);
       }
     } catch (err: any) {
@@ -328,12 +341,12 @@ export default function Home() {
     setSearchLoading(true);
     try {
       let instruksiKhusus = "";
-      if (optBedahRks) instruksiKhusus += "\n- Lakukan BEDAH RKS mendalam: Ekstrak ringkasan, syarat kualifikasi, sertifikasi, dan strategi menang.";
-      if (optCekTypo) instruksiKhusus += "\n- Lakukan CEK TYPO & PERBAIKAN BAHASA persuasif.";
-      if (optAnalisaProp) instruksiKhusus += "\n- Lakukan ANALISA PROPOSAL terhadap KAK.";
-      if (optPitchDeck) instruksiKhusus += "\n- Buat STRUKTUR PITCH DECK/PROPOSAL (Slide per slide mulai dari profil hingga penawaran nilai).";
+      if (optBedahRks) instruksiKhusus += "\n- BEDAH RKS: Ekstrak ringkasan, persyaratan kualifikasi, sertifikasi, dan strategi menang.";
+      if (optCekTypo) instruksiKhusus += "\n- CEK TYPO & BAHASA: Perbaiki ejaan dan buat kalimat menjadi sangat profesional, elegan, dan persuasif.";
+      if (optAnalisaProp) instruksiKhusus += "\n- ANALISA PROPOSAL: Bandingkan isi proposal dengan ketentuan KAK untuk memastikan tidak ada syarat krusial yang terlewat.";
+      if (optPitchDeck) instruksiKhusus += "\n- BUAT PITCH DECK / PROPOSAL: Buat struktur slide presentasi penawaran tender yang memukau klien.";
 
-      const promptText = `Anda Konsultan Tender Senior. Perintah: "${aiQuery}". Tambahan:${instruksiKhusus}`;
+      const promptText = `Anda LISA (Lead Intelligence & Sales Assistant). Perintah: "${aiQuery}". Instruksi:${instruksiKhusus}`;
       const contentsPart: any[] = [{ text: promptText }];
       if (uploadedFileBase64) contentsPart.push({ inline_data: { mime_type: "application/pdf", data: uploadedFileBase64 } });
 
@@ -349,17 +362,9 @@ export default function Home() {
       if (optBedahRks) {
         await fetch(API_URL, {
           method: "POST",
-          body: JSON.stringify({
-            type: "Bedah RKS",
-            action: "add",
-            namaPerusahaan: "Analisis AI Studio",
-            namaProjek: uploadedFileName || aiQuery.slice(0, 30),
-            hasilBedahRks: hasilAi,
-            keterangan: "Otomatis dari AI Generator"
-          })
+          body: JSON.stringify({ type: "Bedah RKS", action: "add", namaPerusahaan: "Analisis LISA", namaProjek: uploadedFileName || aiQuery.slice(0, 30), hasilBedahRks: hasilAi, keterangan: "Otomatis dari LISA AI" })
         });
       }
-
     } catch (err: any) { setAiSearchResult(`Gagal memproses: ${err.message}`); }
     setSearchLoading(false);
   };
@@ -372,7 +377,11 @@ export default function Home() {
 
   const filteredPengalaman = dataAll.pengalaman.filter((item: any) => {
     const matchIndustri = filterIndustri === "Semua" || item.JenisIndustri === filterIndustri;
-    const matchKeyword = !filterKeyword || item.NamaPekerjaan?.toLowerCase().includes(filterKeyword.toLowerCase()) || item.NamaPerusahaan?.toLowerCase().includes(filterKeyword.toLowerCase());
+    const keyword = filterKeyword.toLowerCase();
+    const matchKeyword = !keyword || 
+      item.NamaPekerjaan?.toLowerCase().includes(keyword) || 
+      item.NamaPerusahaan?.toLowerCase().includes(keyword) || 
+      item.Keterangan?.toLowerCase().includes(keyword); // Pencarian hashtag otomatis di sini
     return matchIndustri && matchKeyword;
   });
 
@@ -390,17 +399,23 @@ export default function Home() {
   const currentActiveSession = chatSessions.find(s => s.id === currentSessionId);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-teal-100 text-slate-800 pb-40 font-sans">
-      <header className="w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem]">
+    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-pink-50 to-purple-100 text-slate-800 pb-40 font-sans">
+      <header className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem]">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-md">⚡ Radar Tender Pro</h1>
-            <p className="text-sm text-white/90 font-medium mt-1 tracking-wide">Sistem Monitoring e-Procurement Pintar</p>
+          <div className="flex items-center gap-4">
+            {/* Ikon Siluet Cewek Panjang Cantik ala Lisa BLACKPINK */}
+            <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/60 flex items-center justify-center shadow-xl text-3xl shrink-0 backdrop-blur-md">
+              👩🏻‍🦰✨
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-md">LISA</h1>
+              <p className="text-xs text-pink-100 font-bold mt-1 tracking-wider uppercase">Lead Intelligence & Sales Assistant</p>
+            </div>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs font-bold">
-            <span className="bg-white/25 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">🏢 Portal: {dataAll.perusahaan.length}</span>
-            <span className="bg-white/25 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">🚀 Peluang: {dataAll.pipeline.length}</span>
-            <span className="bg-white/25 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">👨‍💻 Ahli: {dataAll.tenagaAhli?.length || 0}</span>
+            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">🏢 Portal: {dataAll.perusahaan.length}</span>
+            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">🚀 Peluang: {dataAll.pipeline.length}</span>
+            <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow">👨‍💻 Ahli: {dataAll.tenagaAhli?.length || 0}</span>
           </div>
         </div>
       </header>
@@ -410,7 +425,7 @@ export default function Home() {
         {tab === "dashboard" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-2xl border border-white">
-              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-indigo-600 mb-6">{editIndexP !== null ? "✏️ Edit Portal e-Proc" : "➕ Tambah Portal e-Proc Baru"}</h2>
+              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-purple-600 mb-6">{editIndexP !== null ? "✏️ Edit Portal e-Proc" : "➕ Tambah Portal e-Proc Baru"}</h2>
               <form onSubmit={handleSavePerusahaan} className="space-y-5 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <input type="text" placeholder="Nama Perusahaan" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none" value={namaP} onChange={e => setNamaP(e.target.value)} required />
@@ -433,44 +448,36 @@ export default function Home() {
                     </select>
                   </div>
                 </div>
-                <button type="submit" className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-4 rounded-2xl font-bold shadow-lg">{editIndexP !== null ? "Simpan Perubahan" : "Simpan Portal"}</button>
+                <button type="submit" className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white p-4 rounded-2xl font-bold shadow-lg">{editIndexP !== null ? "Simpan Perubahan" : "Simpan Portal"}</button>
               </form>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {dataAll.perusahaan.map((item: any, i: number) => {
-                let statusIcon = null;
-                if (item.StatusUpdate === "NEW") statusIcon = <span className="bg-rose-500 text-white px-3 py-1.5 rounded-xl text-[10px] font-black animate-pulse shadow-lg">🔥 NEW TENDER</span>;
-                else if (item.StatusUpdate === "NO_CHANGE") statusIcon = <span className="bg-slate-100 text-slate-500 border px-3 py-1.5 rounded-xl text-[10px] font-bold">✅ Stabil</span>;
-                else if (item.StatusUpdate === "BLOCKED") statusIcon = <span className="bg-amber-100 text-amber-600 border px-3 py-1.5 rounded-xl text-[10px] font-bold">🛡️ Cek Manual</span>;
-
-                return (
-                <div key={i} className={`bg-white/90 p-6 rounded-[2rem] border shadow-xl flex flex-col justify-between gap-4 ${item.StatusUpdate === "NEW" ? 'border-rose-400 ring-4 ring-rose-50' : 'border-white'}`}>
+              {dataAll.perusahaan.map((item: any, i: number) => (
+                <div key={i} className={`bg-white/90 p-6 rounded-[2rem] border shadow-xl flex flex-col justify-between gap-4 ${item.StatusUpdate === "NEW" ? 'border-pink-400 ring-4 ring-pink-50' : 'border-white'}`}>
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <h3 className="font-extrabold text-lg text-slate-800">{item.NamaPerusahaan}</h3>
-                      <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-fuchsia-100 text-fuchsia-700">{item.Jenis}</span>
+                      <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-pink-100 text-pink-700">{item.Jenis}</span>
                     </div>
                     <div className="space-y-1 text-xs font-medium text-slate-500">
-                      <p>Status Rekanan: <strong className="text-violet-600">{item.StatusRekanan || "Belum"}</strong></p>
-                      <p>Riwayat Projek: <strong className="text-indigo-600">{item.PernahAdaProjek || "Belum"}</strong></p>
-                      <p>🕒 Terakhir Klik: <strong className="text-slate-700">{item.LastClicked || "Belum"}</strong></p>
+                      <p>Status Rekanan: <strong className="text-pink-600">{item.StatusRekanan || "Belum"}</strong></p>
+                      <p>Riwayat Projek: <strong className="text-purple-600">{item.PernahAdaProjek || "Belum"}</strong></p>
                     </div>
                   </div>
                   <div className="flex flex-col gap-3 pt-4 border-t border-slate-100">
                     <div className="flex justify-between items-center w-full">
                       <div className="flex gap-3 text-xs font-bold">
-                        <button onClick={() => { setEditIndexP(i); setNamaP(item.NamaPerusahaan); setJenisP(item.Jenis); setUrlP(item.URL); setStatusRek(item.StatusRekanan || "Belum"); setPernahProj(item.PernahAdaProjek || "Belum"); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-violet-600">Edit</button>
+                        <button onClick={() => { setEditIndexP(i); setNamaP(item.NamaPerusahaan); setJenisP(item.Jenis); setUrlP(item.URL); setStatusRek(item.StatusRekanan || "Belum"); setPernahProj(item.PernahAdaProjek || "Belum"); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-600">Edit</button>
                         <button onClick={() => handleDelete("Daftar Perusahaan", i, item.NamaPerusahaan)} className="text-rose-500">Hapus</button>
                       </div>
-                      <div>{statusIcon}</div>
                     </div>
-                    <button onClick={() => handleOpenEproc(item.NamaPerusahaan, item.URL)} className={`w-full text-white px-5 py-3.5 rounded-xl font-bold text-sm shadow-lg ${item.StatusUpdate === "NEW" ? 'bg-gradient-to-r from-rose-500 to-red-500' : 'bg-gradient-to-r from-teal-400 to-emerald-500'}`}>
+                    <button onClick={() => handleOpenEproc(item.NamaPerusahaan, item.URL)} className="w-full text-white px-5 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-teal-400 to-emerald-500 shadow-lg">
                       <span>Buka e-Proc ↗</span>
                     </button>
                   </div>
                 </div>
-              )})}
+              ))}
             </div>
           </div>
         )}
@@ -522,20 +529,18 @@ export default function Home() {
             </div>
 
             <div className="space-y-5">
-              {dataAll.pipeline.map((p: any, i: number) => {
-                const isHot = p.Status === "Hot"; const isWarm = p.Status === "Warm"; const isGagal = p.Status === "Gagal";
-                return (
-                <div key={i} className={`p-6 rounded-[2rem] border shadow-lg flex flex-col gap-4 ${isHot ? 'bg-rose-50 border-rose-100' : isWarm ? 'bg-amber-50 border-amber-100' : isGagal ? 'bg-slate-100 border-slate-200' : 'bg-blue-50 border-blue-100'}`}>
+              {dataAll.pipeline.map((p: any, i: number) => (
+                <div key={i} className="p-6 rounded-[2rem] border shadow-lg flex flex-col gap-4 bg-white/90">
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                     <div>
                       <span className="text-[10px] font-black text-slate-500 uppercase">{p.NamaPerusahaan}</span>
                       <h3 className="font-extrabold text-lg text-slate-800">{p.NamaProjek}</h3>
                     </div>
                     <div className="flex flex-wrap gap-2 items-center">
-                      <select id={`tahapan-${i}`} className="bg-white border text-xs p-2 rounded-xl font-bold" defaultValue={p.Tahapan || "1. Eksplorasi"}>
+                      <select id={`tahapan-${i}`} className="bg-slate-50 border text-xs p-2 rounded-xl font-bold" defaultValue={p.Tahapan || "1. Eksplorasi"}>
                         <option>1. Eksplorasi</option><option>3. Penawaran</option><option>5. Tender Tayang</option><option>7. Menang</option>
                       </select>
-                      <select id={`status-${i}`} className="bg-white border text-xs p-2 rounded-xl font-bold" defaultValue={p.Status || "Cold"}>
+                      <select id={`status-${i}`} className="bg-slate-50 border text-xs p-2 rounded-xl font-bold" defaultValue={p.Status || "Cold"}>
                         <option value="Hot">🔥 Hot</option><option value="Warm">☀️ Warm</option><option value="Cold">❄️ Cold</option><option value="Gagal">❌ Gagal</option>
                       </select>
                       <button 
@@ -546,16 +551,15 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 text-xs bg-white/60 p-3 rounded-xl">
+                  <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border">
                     <div>💰 Nilai: <strong className="text-emerald-700">{p.EstimasiNilaiProjek || "-"}</strong></div>
                     <div>📅 Tayang: <strong>{p.TanggalEstimasiTayangTender || "-"}</strong></div>
                   </div>
-                  {p.LogCatatan && <p className="text-xs bg-white p-3 rounded-xl italic text-slate-600">📝 "{p.LogCatatan}"</p>}
                   <div className="flex justify-end gap-3 text-xs font-bold pt-1">
                     <button onClick={() => handleDelete("Pipeline", i, p.NamaProjek)} className="text-rose-500">Hapus</button>
                   </div>
                 </div>
-              )})}
+              ))}
             </div>
           </div>
         )}
@@ -563,33 +567,75 @@ export default function Home() {
         {tab === "portofolio" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-2xl border">
-               <h2 className="font-extrabold text-xl text-slate-800 mb-4">➕ Tambah Portofolio Manual</h2>
+               <h2 className="font-extrabold text-xl text-slate-800 mb-4">➕ Tambah Portofolio Baru</h2>
                <form onSubmit={handleSavePengalaman} className="space-y-4 text-sm">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input type="text" placeholder="Nama Perusahaan Klien" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPerusahaan} onChange={e => setExpPerusahaan(e.target.value)} required />
                     <select className="p-4 bg-slate-50 border rounded-2xl w-full" value={expIndustri} onChange={e => setExpIndustri(e.target.value)}>
-                      <option>IT & Software</option><option>Digital Marketing</option><option>Infrastruktur & Jaringan</option><option>Konsultansi & Audit</option><option>Lainnya</option>
+                      <option>IT Masterplan / EA</option>
+                      <option>IT Governance</option>
+                      <option>IT audit / asesment</option>
+                      <option>IT security</option>
+                      <option>ISO</option>
+                      <option>IT Custom Dev</option>
+                      <option>AI / Machine learning</option>
+                      <option>Big Data / KMS / PAM</option>
+                      <option>Hardware</option>
+                      <option>Lisensi</option>
                     </select>
                   </div>
                   <input type="text" placeholder="Judul / Jenis Pekerjaan" className="p-4 bg-slate-50 border rounded-2xl w-full" value={expPekerjaan} onChange={e => setExpPekerjaan(e.target.value)} required />
-                  <div className="grid grid-cols-3 gap-3">
-                    <input type="text" placeholder="Tahun" className="p-3 bg-slate-50 border rounded-xl" value={expTahun} onChange={e => setExpTahun(e.target.value)} />
-                    <input type="text" placeholder="Lama" className="p-3 bg-slate-50 border rounded-xl" value={expLama} onChange={e => setExpLama(e.target.value)} />
-                    <input type="text" placeholder="Nilai (Rp)" className="p-3 bg-slate-50 border rounded-xl" value={expNilai} onChange={e => setExpNilai(e.target.value)} />
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Tanggal Mulai:</label>
+                      <input type="date" className="p-3 bg-slate-50 border rounded-xl w-full text-xs" value={expTglMulai} onChange={e => setExpTglMulai(e.target.value)} required />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Durasi Pekerjaan:</label>
+                      <input type="text" placeholder="Contoh: 3 Bulan" className="p-3 bg-slate-50 border rounded-xl w-full text-xs" value={expDurasi} onChange={e => setExpDurasi(e.target.value)} required />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Nilai Projek (Rp):</label>
+                      <input type="text" placeholder="Contoh: 150000000" className="p-3 bg-slate-50 border rounded-xl w-full text-xs" value={expNilai} onChange={e => setExpNilai(e.target.value)} />
+                    </div>
                   </div>
-                  <textarea placeholder="Keterangan..." className="p-4 bg-slate-50 border rounded-2xl w-full" rows={2} value={expKet} onChange={e => setExpKet(e.target.value)} />
+
+                  <textarea placeholder="Keterangan & Hashtag (Misal: #ISO #Security #BankJateng)..." className="p-4 bg-slate-50 border rounded-2xl w-full text-xs" rows={2} value={expKet} onChange={e => setExpKet(e.target.value)} />
                   <button type="submit" className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold shadow">Simpan Portofolio</button>
                </form>
             </div>
+
+            <div className="bg-pink-50 p-6 rounded-[2rem] border border-pink-100 space-y-3">
+              <h3 className="font-extrabold text-pink-900 text-sm">🔍 Filter & Hashtag Search</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <select className="w-full p-3 bg-white border rounded-xl" value={filterIndustri} onChange={e => setFilterIndustri(e.target.value)}>
+                  <option value="Semua">Semua Kategori</option>
+                  <option value="IT Masterplan / EA">IT Masterplan / EA</option>
+                  <option value="IT Governance">IT Governance</option>
+                  <option value="IT audit / asesment">IT audit / asesment</option>
+                  <option value="IT security">IT security</option>
+                  <option value="ISO">ISO</option>
+                  <option value="IT Custom Dev">IT Custom Dev</option>
+                  <option value="AI / Machine learning">AI / Machine learning</option>
+                  <option value="Big Data / KMS / PAM">Big Data / KMS / PAM</option>
+                  <option value="Hardware">Hardware</option>
+                  <option value="Lisensi">Lisensi</option>
+                </select>
+                <input type="text" placeholder="Cari keyword atau #hashtag (contoh: #ISO)..." className="w-full p-3 bg-white border rounded-xl" value={filterKeyword} onChange={e => setFilterKeyword(e.target.value)} />
+              </div>
+            </div>
+
             <div className="space-y-4">
               {filteredPengalaman.map((item:any, i:number)=>(
-                <div key={i} className="p-6 bg-white/90 rounded-3xl border shadow flex justify-between gap-4">
+                <div key={i} className="p-6 bg-white/90 rounded-3xl border shadow flex flex-col md:flex-row justify-between gap-4">
                   <div>
                     <h4 className="font-black text-slate-800 text-base">{item.NamaPekerjaan}</h4>
-                    <p className="text-xs font-bold text-indigo-600 mt-1">{item.NamaPerusahaan}</p>
-                    <p className="text-xs text-slate-500 mt-2">Nilai: <strong className="text-emerald-700">{item.NilaiProjek || "-"}</strong> ({item.TahunPelaksanaan})</p>
+                    <p className="text-xs font-bold text-pink-600 mt-1">{item.NamaPerusahaan} • <span className="bg-pink-50 px-2 py-0.5 rounded text-pink-700">{item.JenisIndustri}</span></p>
+                    <p className="text-xs text-slate-500 mt-2">Mulai: <strong>{item.TanggalMulai || "-"}</strong> | Durasi: <strong>{item.DurasiPekerjaan || "-"}</strong> | Nilai: <strong className="text-emerald-700">{item.NilaiProjek || "-"}</strong></p>
+                    {item.Keterangan && <p className="text-xs bg-slate-50 p-2.5 rounded-xl mt-2 text-slate-600">💬 {item.Keterangan}</p>}
                   </div>
-                  <button onClick={() => handleDelete("Pengalaman", i, item.NamaPekerjaan)} className="text-xs font-bold text-rose-500">Hapus</button>
+                  <button onClick={() => handleDelete("Pengalaman", i, item.NamaPekerjaan)} className="text-xs font-bold text-rose-500 self-start">Hapus</button>
                 </div>
               ))}
             </div>
@@ -599,24 +645,27 @@ export default function Home() {
         {tab === "tenagaAhli" && (
           <div className="space-y-6">
             <div className="bg-white/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-2xl border">
-              <h2 className="font-extrabold text-xl text-slate-800 mb-4">👨‍💻 Tambah Database Tenaga Ahli</h2>
+              <h2 className="font-extrabold text-xl text-slate-800 mb-4">{editIndexAhli !== null ? "✏️ Edit Tenaga Ahli" : "👨‍💻 Tambah Database Tenaga Ahli"}</h2>
               <form onSubmit={handleSaveTenagaAhli} className="space-y-4 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input type="text" placeholder="Nama Lengkap & Gelar" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliNama} onChange={e => setAhliNama(e.target.value)} required />
-                  <input type="text" placeholder="Posisi Utama" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliPosisi} onChange={e => setAhliPosisi(e.target.value)} required />
+                  <input type="text" placeholder="Posisi Utama (Misal: IT Project Manager)" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliPosisi} onChange={e => setAhliPosisi(e.target.value)} required />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input type="text" placeholder="Sertifikasi" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliSertif} onChange={e => setAhliSertif(e.target.value)} required />
+                  <input type="text" placeholder="Sertifikasi (TOGAF, ISO, dll)" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliSertif} onChange={e => setAhliSertif(e.target.value)} required />
                   <input type="text" placeholder="No Kontak" className="p-4 bg-slate-50 border rounded-2xl w-full" value={ahliKontak} onChange={e => setAhliKontak(e.target.value)} />
                 </div>
-                <textarea placeholder="Ringkasan Pengalaman Projek & Keahlian..." className="p-4 bg-slate-50 border rounded-2xl w-full" rows={3} value={ahliPengalaman} onChange={e => setAhliPengalaman(e.target.value)} required />
-                <button type="submit" className="w-full bg-violet-600 text-white p-4 rounded-2xl font-bold shadow">Simpan Tenaga Ahli</button>
+                <textarea placeholder="Ringkasan Pengalaman Projek..." className="p-4 bg-slate-50 border rounded-2xl w-full" rows={3} value={ahliPengalaman} onChange={e => setAhliPengalaman(e.target.value)} required />
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-pink-600 text-white p-4 rounded-2xl font-bold shadow">{editIndexAhli !== null ? "Simpan Perubahan" : "Simpan Tenaga Ahli"}</button>
+                  {editIndexAhli !== null && <button type="button" onClick={() => { setEditIndexAhli(null); setAhliNama(""); setAhliPosisi(""); setAhliSertif(""); setAhliPengalaman(""); setAhliKontak(""); }} className="bg-slate-200 px-6 rounded-2xl font-bold">Batal</button>}
+                </div>
               </form>
             </div>
 
             <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
               <div>
-                <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-fuchsia-300">📄 Generator CV Tender AI</h3>
+                <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">📄 Generator CV Tender AI</h3>
               </div>
               <form onSubmit={handleGenerateCvAi} className="space-y-4 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -626,12 +675,12 @@ export default function Home() {
                   </select>
                   <input type="text" placeholder="Syarat Tender (opsional)..." className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-white outline-none" value={tenderReqForAhli} onChange={e => setTenderReqForAhli(e.target.value)} />
                 </div>
-                <button type="submit" className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white p-4 rounded-2xl font-bold text-xs shadow-lg">{cvLoading ? "🤖 Menyusun CV..." : "✨ Generate CV"}</button>
+                <button type="submit" className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white p-4 rounded-2xl font-bold text-xs shadow-lg">{cvLoading ? "🤖 Menyusun CV..." : "✨ Generate CV"}</button>
               </form>
               {cvResult && (
                 <div className="bg-white/10 p-6 rounded-2xl text-xs leading-relaxed">
                    <div className="flex justify-between items-center border-b border-white/10 pb-3 mb-3">
-                    <strong className="text-cyan-300">Hasil CV:</strong>
+                    <strong className="text-pink-300">Hasil CV:</strong>
                     <button onClick={() => navigator.clipboard.writeText(cvResult)} className="bg-white/20 px-3 py-1.5 rounded-lg">Copy</button>
                   </div>
                   <p className="whitespace-pre-line">{cvResult}</p>
@@ -645,9 +694,12 @@ export default function Home() {
                   <div className="flex justify-between items-start">
                     <div>
                       <h4 className="font-black text-slate-800 text-base">{a.Nama}</h4>
-                      <p className="text-xs font-bold text-violet-600">{a.PosisiUtama}</p>
+                      <p className="text-xs font-bold text-pink-600">{a.PosisiUtama}</p>
                     </div>
-                    <button onClick={() => handleDelete("Tenaga Ahli", i, a.Nama)} className="text-xs font-bold text-rose-500">Hapus</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setEditIndexAhli(i); setAhliNama(a.Nama); setAhliPosisi(a.PosisiUtama); setAhliSertif(a.Sertifikasi); setAhliPengalaman(a.Pengalaman); setAhliKontak(a.NoKontak || ""); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-xs font-bold text-pink-600">Edit</button>
+                      <button onClick={() => handleDelete("Tenaga Ahli", i, a.Nama)} className="text-xs font-bold text-rose-500">Hapus</button>
+                    </div>
                   </div>
                   <div className="text-xs space-y-1 bg-slate-50 p-3 rounded-xl border">
                     <p>🏆 Sertifikasi: <strong className="text-slate-700">{a.Sertifikasi}</strong></p>
@@ -668,12 +720,12 @@ export default function Home() {
                   <input type="text" placeholder="Nama Rekanan" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekNama} onChange={e => setRekNama(e.target.value)} required />
                   <input type="text" placeholder="Produk Rekanan" className="w-full p-4 bg-slate-50 border rounded-2xl" value={rekProduk} onChange={e => setRekProduk(e.target.value)} />
                 </div>
-                <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100">
-                  <label className="block text-xs font-bold text-teal-900 mb-2">👥 PIC & No Telp:</label>
+                <div className="bg-pink-50 p-4 rounded-2xl border border-pink-100">
+                  <label className="block text-xs font-bold text-pink-900 mb-2">👥 PIC & No Telp:</label>
                   <input type="text" placeholder="Nama PIC" className="w-full p-3 bg-white border rounded-xl text-xs mb-2" value={rekPic} onChange={e => setRekPic(e.target.value)} required />
                   <input type="text" placeholder="No Telp PIC" className="w-full p-3 bg-white border rounded-xl text-xs" value={rekTelp} onChange={e => setRekTelp(e.target.value)} />
                 </div>
-                <button type="submit" className="w-full bg-teal-600 text-white p-4 rounded-2xl font-bold shadow">Simpan Rekanan</button>
+                <button type="submit" className="w-full bg-pink-600 text-white p-4 rounded-2xl font-bold shadow">Simpan Rekanan</button>
               </form>
             </div>
             <div className="space-y-4">
@@ -685,7 +737,7 @@ export default function Home() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs bg-slate-50 p-4 rounded-2xl border">
                     <div>💵 Harga: <strong className="text-emerald-700">{r.HargaProduk || "-"}</strong></div>
-                    <div>👥 PIC: <strong className="text-teal-800">{r.PIC}</strong> ({r.NoTelpPIC})</div>
+                    <div>👥 PIC: <strong className="text-pink-800">{r.PIC}</strong> ({r.NoTelpPIC})</div>
                   </div>
                 </div>
               ))}
@@ -695,75 +747,74 @@ export default function Home() {
 
         {tab === "rekaman" && (
           <div className="space-y-6">
-            {/* Sesi Chat AI */}
-            <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
+            {/* AI Chat Session */}
+            <div className="bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-900 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 to-cyan-300">✨ AI Tender Chat</h3>
-                  <p className="text-xs text-indigo-200 mt-1">Chat tersinkronisasi otomatis ke Google Sheets!</p>
+                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - AI Assistant Chat</h3>
+                  <p className="text-xs text-pink-200 mt-1">Ngobrol dengan LISA secara lisan atau ketik, memori tersimpan di Cloud!</p>
                 </div>
-                <button onClick={createNewChatSession} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5">
+                <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5">
                   <span>➕ Buat Sesi Baru</span>
                 </button>
               </div>
 
-              {/* Daftar Sesi */}
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
                 {chatSessions.map((session) => (
-                  <div key={session.id} onClick={() => setCurrentSessionId(session.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 transition ${session.id === currentSessionId ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg' : 'bg-white/10 text-indigo-200 hover:bg-white/20'}`}>
+                  <div key={session.id} onClick={() => setCurrentSessionId(session.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 transition ${session.id === currentSessionId ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-lg' : 'bg-white/10 text-pink-200 hover:bg-white/20'}`}>
                     <span>💬 {session.title}</span>
                     <button onClick={(e) => deleteChatSession(session.id, e)} className="text-white/60 hover:text-rose-300 ml-1">✕</button>
                   </div>
                 ))}
               </div>
 
-              {/* Chat Area */}
               <div ref={chatContainerRef} className="bg-white/10 backdrop-blur-lg p-5 rounded-2xl border border-white/20 space-y-4 max-h-[400px] overflow-y-auto">
                 {currentActiveSession?.messages.map((msg, idx) => (
                   <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[10px] text-indigo-300 mb-1 font-bold">{msg.role === 'user' ? 'Anda' : 'AI Consultant'}</span>
-                    <div className={`p-4 rounded-2xl text-xs leading-relaxed max-w-[85%] whitespace-pre-line ${msg.role === 'user' ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow' : 'bg-white/20 text-slate-100 border border-white/10'}`}>
+                    <span className="text-[10px] text-pink-300 mb-1 font-bold">{msg.role === 'user' ? 'Anda' : 'LISA'}</span>
+                    <div className={`p-4 rounded-2xl text-xs leading-relaxed max-w-[85%] whitespace-pre-line ${msg.role === 'user' ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow' : 'bg-white/20 text-slate-100 border border-white/10'}`}>
                       {msg.content}
                     </div>
                   </div>
                 ))}
-                {chatLoading && <div className="text-xs text-fuchsia-300 animate-pulse">🤖 AI sedang mengetik...</div>}
+                {chatLoading && <div className="text-xs text-pink-300 animate-pulse">👩🏻‍🦰 LISA sedang mengetik...</div>}
               </div>
 
-              {/* Input Chat */}
               <form onSubmit={handleSendChat} className="flex gap-2 items-center">
-                <button type="button" onClick={startVoiceInput} className={`p-4 rounded-2xl text-white font-bold text-sm shadow shrink-0 ${voiceActive ? 'bg-rose-500 animate-bounce' : 'bg-indigo-600 hover:bg-indigo-700'}`}>🎙️</button>
-                <input type="text" placeholder="Ketik pesan..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-fuchsia-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
-                <button type="submit" className="bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white px-6 py-4 rounded-2xl font-bold text-xs shadow-lg shrink-0">Kirim</button>
+                <button type="button" onClick={startVoiceInput} className={`p-4 rounded-2xl text-white font-bold text-sm shadow shrink-0 ${voiceActive ? 'bg-rose-500 animate-bounce' : 'bg-pink-600 hover:bg-pink-700'}`}>🎙️</button>
+                <input type="text" placeholder="Ketik pesan atau tanyakan strategi..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
+                <button type="submit" className="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-4 rounded-2xl font-bold text-xs shadow-lg shrink-0">Kirim</button>
               </form>
             </div>
 
-            {/* Generator Pitch Deck */}
+            {/* AI Studio (Bedah RKS, Cek Typo, Analisa Proposal, Pitch Deck) */}
             <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl space-y-6">
               <div>
-                <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 to-cyan-300">📊 Dokumen Generator AI</h3>
+                <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">📊 LISA - Dokumen & Proposal Generator</h3>
               </div>
               <form onSubmit={handleAdvancedAI} className="space-y-5">
                 <div className="bg-white/10 p-5 rounded-2xl border border-white/20 flex flex-col md:flex-row items-center justify-between gap-4">
                   <div className="text-xs">
-                    <span className="font-bold block text-fuchsia-300">📁 Unggah PDF KAK/RKS (Opsional):</span>
+                    <span className="font-bold block text-pink-300">📁 Unggah PDF KAK/RKS (Opsional):</span>
                   </div>
-                  <input type="file" accept="application/pdf" onChange={handleFileUpload} className="text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-semibold file:bg-fuchsia-600 file:text-white cursor-pointer" />
+                  <input type="file" accept="application/pdf" onChange={handleFileUpload} className="text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-semibold file:bg-pink-600 file:text-white cursor-pointer" />
                 </div>
-                <textarea rows={3} placeholder="Instruksi tambahan..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none" value={aiQuery} onChange={e => setAiQuery(e.target.value)} />
+                <textarea rows={3} placeholder="Instruksi tambahan untuk LISA..." className="w-full p-4 bg-white/10 border border-white/20 rounded-2xl text-xs text-white outline-none" value={aiQuery} onChange={e => setAiQuery(e.target.value)} />
                 <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
-                  <span className="font-bold block text-cyan-300 text-xs">⚙️ Pilih Kebutuhan:</span>
+                  <span className="font-bold block text-cyan-300 text-xs">⚙️ Pilih Kebutuhan Analisis & Generator:</span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optBedahRks} onChange={e => setOptBedahRks(e.target.checked)} className="w-4 h-4" /><span>🔍 Bedah RKS</span></label>
-                    <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optPitchDeck} onChange={e => setOptPitchDeck(e.target.checked)} className="w-4 h-4" /><span>📊 Buat Pitch Deck</span></label>
+                    <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optBedahRks} onChange={e => setOptBedahRks(e.target.checked)} className="w-4 h-4 accent-pink-500" /><span>🔍 Bedah RKS Mendalam</span></label>
+                    <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optCekTypo} onChange={e => setOptCekTypo(e.target.checked)} className="w-4 h-4 accent-pink-500" /><span>📝 Cek Typo & Perbaikan Bahasa</span></label>
+                    <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optAnalisaProp} onChange={e => setOptAnalisaProp(e.target.checked)} className="w-4 h-4 accent-pink-500" /><span>⚖️ Analisa Proposal vs KAK</span></label>
+                    <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={optPitchDeck} onChange={e => setOptPitchDeck(e.target.checked)} className="w-4 h-4 accent-pink-500" /><span>📊 Buat Pitch Deck / Proposal</span></label>
                   </div>
                 </div>
-                <button type="submit" className="w-full bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white p-4 rounded-2xl font-bold text-sm shadow-lg">Jalankan Generator AI</button>
+                <button type="submit" className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white p-4 rounded-2xl font-bold text-sm shadow-lg">Jalankan LISA AI Generator</button>
               </form>
               {aiSearchResult && (
                 <div className="mt-6 bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 text-xs leading-relaxed text-slate-100">
                   <div className="flex justify-between items-center border-b border-white/10 pb-3 mb-3">
-                    <strong className="text-fuchsia-300">Hasil Output:</strong>
+                    <strong className="text-pink-300">Hasil Output LISA:</strong>
                     <button onClick={() => navigator.clipboard.writeText(aiSearchResult)} className="bg-white/20 px-3 py-1.5 rounded-lg text-[10px] font-bold">Copy</button>
                   </div>
                   <p className="whitespace-pre-line">{aiSearchResult}</p>
@@ -803,7 +854,7 @@ export default function Home() {
           { id: 'portofolio', icon: '🏆', label: 'Portofolio' },
           { id: 'tenagaAhli', icon: '👨‍💻', label: 'Ahli' },
           { id: 'rekanan', icon: '🤝', label: 'Rekanan' },
-          { id: 'rekaman', icon: '✨', label: 'AI Studio' },
+          { id: 'rekaman', icon: '👩🏻‍🦰', label: 'LISA AI' },
           { id: 'catatan', icon: '📝', label: 'Catatan' }
         ].map((menu) => (
           <button key={menu.id} onClick={() => setTab(menu.id)} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold shrink-0 transition ${tab === menu.id ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-100'}`}>
