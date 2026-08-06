@@ -8,6 +8,7 @@ export default function Home() {
   });
   const [loading, setLoading] = useState(false);
   const [activeUser, setActiveUser] = useState("Alda");
+  const [checkingEproc, setCheckingEproc] = useState(false);
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
@@ -122,13 +123,72 @@ export default function Home() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { 
+    fetchData(); 
+  }, []);
 
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatSessions, currentSessionId, chatLoading]);
+
+  // Fungsi Pengecekan Perubahan URL e-Proc Otomatis (Change Detector)
+  const runAutoEprocCheck = async (isManual = true) => {
+    if (isManual) setCheckingEproc(true);
+    try {
+      const statuses = [];
+      for (let i = 0; i < dataAll.perusahaan.length; i++) {
+        const p = dataAll.perusahaan[i];
+        const url = p.URL || p.url;
+        const oldHash = p.Hash || p.hash || "";
+        
+        let badge = "🟢 Tidak Ada Perubahan";
+        let newHash = oldHash;
+
+        try {
+          // Melakukan test fetch URL (CORS / Cloud Function proxy simulation)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
+          
+          const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          
+          if (response.ok) {
+            const dataObj = await response.json();
+            const content = dataObj.contents || "";
+            // Buat hash sederhana dari panjang konten & cuplikan teks
+            newHash = content.length.toString() + "_" + content.slice(0, 50);
+
+            if (oldHash && oldHash !== newHash) {
+              badge = "🔴 Ada Perubahan";
+            } else {
+              badge = "🟢 Tidak Ada Perubahan";
+            }
+          } else {
+            badge = "⚠️ Tidak Bisa Dicek Otomatis";
+          }
+        } catch (err) {
+          // Kebanyakan web pemerintah/BUMN memblokir client-side fetch (CORS/SSL) -> Tandai otomatis tidak bisa dicek otomatis
+          badge = "⚠️ Tidak Bisa Dicek Otomatis";
+        }
+
+        statuses.push({ index: i, badge, hash: newHash });
+      }
+
+      // Kirim hasil update status ke backend Sheets
+      await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "updateEprocStatus", statuses })
+      });
+
+      fetchData();
+      if (isManual) alert("✨ Auto-cek perubahan e-Proc selesai!");
+    } catch (e) {
+      if (isManual) alert("Gagal melakukan pengecekan otomatis.");
+    }
+    if (isManual) setCheckingEproc(false);
+  };
 
   const saveSessionToCloud = async (sessionId: string, title: string, messages: any[]) => {
     await fetch(API_URL, { 
@@ -231,21 +291,20 @@ export default function Home() {
     setCvLoading(false);
   };
 
-  // Logika Perintah e-Proc & Cek Database
+  // Logika Perintah e-Proc Otomatis & Cek Database
   const checkAndExecuteEprocCommand = (text: string) => {
     const lower = text.toLowerCase();
     if (lower.includes("buka eproc") || lower.includes("buka e-proc") || lower.includes("buka portal")) {
-      // Cari nama perusahaan setelah kata perintah
       const foundComp = dataAll.perusahaan.find((p: any) => {
         const name = (p.NamaPerusahaan || p.namaperusahaan || "").toLowerCase();
-        return lower.includes(name);
+        return lower.includes(name) || name.split(" ").some((n: string) => n.length > 2 && lower.includes(n));
       });
 
       if (foundComp) {
         const url = foundComp.URL || foundComp.url;
         const name = foundComp.NamaPerusahaan || foundComp.namaperusahaan;
         window.open(url, "_blank");
-        return `Membuka portal e-Proc ${name} untuk Kak ${activeUser}.`;
+        return `Membuka portal e-Proc ${name} di tab baru untuk Kak ${activeUser}.`;
       } else {
         return "e-Proc tersebut belum ada di database.";
       }
@@ -256,7 +315,6 @@ export default function Home() {
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
 
-    // Cek perintah buka e-proc via suara/teks
     const eprocReply = checkAndExecuteEprocCommand(textToSend);
     if (eprocReply) {
       const currentSession = chatSessions.find(s => s.id === currentSessionId);
@@ -326,7 +384,6 @@ export default function Home() {
     processAndSendChat(text);
   };
 
-  // Push-to-Talk Voice (Klik sekali bicara, klik lagi untuk bicara berikutnya)
   const startSingleVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -338,31 +395,16 @@ export default function Home() {
     recognition.lang = 'id-ID';
     recognition.interimResults = false;
     
-    recognition.onstart = () => {
-      setVoiceActive(true);
-    };
-
+    recognition.onstart = () => setVoiceActive(true);
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setVoiceActive(false);
-      if (transcript) {
-        processAndSendChat(transcript);
-      }
+      if (transcript) processAndSendChat(transcript);
     };
+    recognition.onerror = () => setVoiceActive(false);
+    recognition.onend = () => setVoiceActive(false);
 
-    recognition.onerror = () => {
-      setVoiceActive(false);
-    };
-
-    recognition.onend = () => {
-      setVoiceActive(false);
-    };
-
-    try {
-      recognition.start();
-    } catch(e) {
-      setVoiceActive(false);
-    }
+    try { recognition.start(); } catch(e) { setVoiceActive(false); }
   };
 
   const handleDelete = async (sheetName: string, rowIndex: number, nama: string) => {
@@ -470,10 +512,12 @@ export default function Home() {
               <p className="text-xs text-pink-300 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant • Aktif: <span className="text-white">{activeUser}</span></p>
             </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-3 text-xs font-bold">
+          <div className="flex flex-wrap justify-center gap-3 text-xs font-bold items-center">
+            <button onClick={() => runAutoEprocCheck(true)} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-full shadow border border-pink-400/30 transition">
+              {checkingEproc ? "🔄 Memeriksa..." : "🔄 Cek Perubahan e-Proc"}
+            </button>
             <span className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-pink-500/30 shadow">🏢 Portal: {dataAll.perusahaan.length}</span>
             <span className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-pink-500/30 shadow">🚀 Peluang: {dataAll.pipeline.length}</span>
-            <span className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-pink-500/30 shadow">👨‍💻 Ahli: {dataAll.tenagaAhli?.length || 0}</span>
           </div>
         </div>
       </header>
@@ -517,13 +561,17 @@ export default function Home() {
                 const statusR = item.StatusRekanan || item.statusrekanan || "Belum";
                 const pernahP = item.PernahAdaProjek || item.pernahadaprojek || "Belum";
                 const urlComp = item.URL || item.url || "#";
+                const badgeStatus = item.Badge || item.badge || "🟢 Tidak Ada Perubahan";
 
                 return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow-xl flex flex-col justify-between gap-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <h3 className="font-extrabold text-lg text-white">{namaComp}</h3>
-                      <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-pink-950 text-pink-300 border border-pink-500/30">{jenisComp}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] px-3 py-1 rounded-full font-bold border ${badgeStatus.includes('Ada Perubahan') ? 'bg-rose-950 text-rose-300 border-rose-500/30' : badgeStatus.includes('Tidak Bisa') ? 'bg-amber-950 text-amber-300 border-amber-500/30' : 'bg-emerald-950 text-emerald-300 border-emerald-500/30'}`}>{badgeStatus}</span>
+                        <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-pink-950 text-pink-300 border border-pink-500/30">{jenisComp}</span>
+                      </div>
                     </div>
                     <div className="space-y-1 text-xs font-medium text-slate-400">
                       <p>Status Rekanan: <strong className="text-pink-400">{statusR}</strong></p>
@@ -826,7 +874,7 @@ export default function Home() {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (Aktif: {activeUser})</h3>
-                  <p className="text-xs text-pink-200 mt-1">Katakan perintah seperti: &quot;Buka e-Proc Telkom&quot;.</p>
+                  <p className="text-xs text-pink-200 mt-1">Katakan perintah seperti: &quot;Buka e-Proc LPS&quot;.</p>
                 </div>
                 <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
@@ -863,7 +911,7 @@ export default function Home() {
                 >
                   {voiceActive ? "🎙️..." : "🎙️"}
                 </button>
-                <input type="text" placeholder="Ketik pesan atau perintah (misal: Buka e-Proc Telkom)..." className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
+                <input type="text" placeholder="Ketik pesan atau perintah (misal: Buka e-Proc LPS)..." className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-xs text-white outline-none focus:ring-2 focus:ring-pink-400" value={chatInput} onChange={e => setChatInput(e.target.value)} />
                 <button type="submit" className="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-4 rounded-2xl font-bold text-xs shadow-lg shrink-0">Kirim</button>
               </form>
             </div>
