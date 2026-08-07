@@ -87,7 +87,7 @@ export default function Home() {
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [aiSearchResult, setAiSearchResult] = useState("");
 
-  // Load Data & Cek Cache
+  // Load Data & Bypass Cache jika baru update
   const fetchData = async (useCache = true) => {
     const savedUser = localStorage.getItem("lisa_active_user");
     if (savedUser) setActiveUser(savedUser);
@@ -149,7 +149,6 @@ export default function Home() {
     }
   }, [chatSessions, currentSessionId, chatLoading]);
 
-  // Deteksi Identitas User dan Sinkronisasi Header Aktif secara Otomatis
   const detectUserFromVoiceContext = (transcript: string) => {
     const lower = transcript.toLowerCase();
     const profiles = dataAll.voiceProfiles || [];
@@ -258,13 +257,14 @@ export default function Home() {
     e.preventDefault();
     const actionType = editIndexPipeline !== null ? "edit" : "add";
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: actionType, rowIndex: editIndexPipeline, namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
-    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipeline(null); fetchData(false);
+    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipeline(null); 
+    setTimeout(() => fetchData(false), 1000);
   };
 
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "updateStatus", rowIndex: index, tahapan, status }) });
-    fetchData(false);
-    alert("Status pipeline berhasil diperbarui!");
+    setTimeout(() => fetchData(false), 1000);
+    alert("Status pipeline berhasil diperbarui dan disinkronkan ke Google Sheets!");
   };
 
   const handleSavePengalaman = async (e: any) => {
@@ -500,22 +500,29 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
+  // Kalkulasi Pi Chart yang disesuaikan agar akurat membaca status 'Gagal'
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
     const val = parseRupiah(p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || 0);
     totalNilaiPipeline += val;
-    const status = (p.Status || p.status || "Cold").toString().trim();
-    if (status === "Hot") hotVal += val; 
-    else if (status === "Warm") warmVal += val; 
-    else if (status === "Gagal") gagalVal += val; 
-    else coldVal += val;
+    const status = (p.Status || p.status || "").toString().trim().toLowerCase();
+    
+    if (status === "hot") {
+      hotVal += val;
+    } else if (status === "warm") {
+      warmVal += val;
+    } else if (status === "gagal") {
+      gagalVal += val;
+    } else {
+      coldVal += val;
+    }
   });
 
   const safeTotal = totalNilaiPipeline || 1;
   const pHot = (hotVal / safeTotal) * 100;
   const pWarm = pHot + (warmVal / safeTotal) * 100;
-  const pCold = pWarm + (coldVal / safeTotal) * 100;
-  const pieChartStyle = { background: `conic-gradient(#f43f5e 0% ${pHot}%, #f59e0b ${pHot}% ${pWarm}%, #3b82f6 ${pWarm}% ${pCold}%, #64748b ${pCold}% 100%)` };
+  const pGagal = pWarm + (gagalVal / safeTotal) * 100;
+  const pieChartStyle = { background: `conic-gradient(#f43f5e 0% ${pHot}%, #f59e0b ${pHot}% ${pWarm}%, #64748b ${pWarm}% ${pGagal}%, #3b82f6 ${pGagal}% 100%)` };
 
   const currentActiveSession = chatSessions.find(s => s.id === currentSessionId);
 
@@ -629,8 +636,8 @@ export default function Home() {
               <div className="flex-1 grid grid-cols-2 gap-4 w-full text-xs">
                 <div className="bg-rose-950/40 border border-rose-500/30 p-4 rounded-2xl"><p className="font-bold text-rose-400 uppercase">🔥 Hot Value</p><h3 className="text-sm md:text-base font-black text-rose-200 mt-1">{formatRupiah(hotVal)}</h3></div>
                 <div className="bg-amber-950/40 border border-amber-500/30 p-4 rounded-2xl"><p className="font-bold text-amber-400 uppercase">☀️ Warm Value</p><h3 className="text-sm md:text-base font-black text-amber-200 mt-1">{formatRupiah(warmVal)}</h3></div>
+                <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl"><p className="font-bold text-slate-300 uppercase">❌ Gagal Value</p><h3 className="text-sm md:text-base font-black text-slate-100 mt-1">{formatRupiah(gagalVal)}</h3></div>
                 <div className="bg-blue-950/40 border border-blue-500/30 p-4 rounded-2xl"><p className="font-bold text-blue-400 uppercase">❄️ Cold Value</p><h3 className="text-sm md:text-base font-black text-blue-200 mt-1">{formatRupiah(coldVal)}</h3></div>
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl"><p className="font-bold text-slate-400 uppercase">❌ Gagal Value</p><h3 className="text-sm md:text-base font-black text-slate-200 mt-1">{formatRupiah(gagalVal)}</h3></div>
               </div>
             </div>
 
