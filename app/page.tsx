@@ -22,6 +22,7 @@ export default function Home() {
   const [pernahProj, setPernahProj] = useState("Belum");
 
   // State Pipeline
+  const [editIndexPipeline, setEditIndexPipeline] = useState<number | null>(null);
   const [pipePerusahaan, setPipePerusahaan] = useState("");
   const [pipeProjek, setPipeProjek] = useState("");
   const [pipeNilai, setPipeNilai] = useState("");
@@ -148,7 +149,7 @@ export default function Home() {
     }
   }, [chatSessions, currentSessionId, chatLoading]);
 
-  // Deteksi Identitas User berbasis AI Contextual Voice Analysis
+  // Deteksi Identitas User dan Sinkronisasi Header Aktif secara Otomatis
   const detectUserFromVoiceContext = (transcript: string) => {
     const lower = transcript.toLowerCase();
     const profiles = dataAll.voiceProfiles || [];
@@ -158,7 +159,6 @@ export default function Home() {
       const signatureKeywords = (p.SignatureKeywords || p.signaturekeywords || "").toLowerCase();
 
       if (namaUser) {
-        // Jika teks lisan mengandung nama user atau keyword spesifik profil suara tersebut
         if (lower.includes(namaUser.toLowerCase()) || (signatureKeywords && signatureKeywords.split(",").some((kw: string) => kw.trim() && lower.includes(kw.trim())))) {
           setActiveUser(namaUser);
           localStorage.setItem("lisa_active_user", namaUser);
@@ -256,8 +256,9 @@ export default function Home() {
 
   const handleSavePipeline = async (e: any) => {
     e.preventDefault();
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "add", namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
-    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); fetchData(false);
+    const actionType = editIndexPipeline !== null ? "edit" : "add";
+    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: actionType, rowIndex: editIndexPipeline, namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
+    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipeline(null); fetchData(false);
   };
 
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
@@ -334,7 +335,6 @@ export default function Home() {
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
 
-    // Analisis konteks suara dan identitas pembicara
     detectUserFromVoiceContext(textToSend);
 
     const eprocReply = checkAndExecuteEprocCommand(textToSend);
@@ -635,7 +635,7 @@ export default function Home() {
             </div>
 
             <div className="bg-slate-900/90 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] shadow-2xl border border-pink-500/20">
-              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-400 mb-6">➕ Tambah Pipeline</h2>
+              <h2 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-400 mb-6">{editIndexPipeline !== null ? "✏️ Edit Pipeline" : "➕ Tambah Pipeline"}</h2>
               <form onSubmit={handleSavePipeline} className="space-y-5 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
@@ -659,7 +659,10 @@ export default function Home() {
                   </select>
                 </div>
                 <textarea placeholder="Catatan singkat..." className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl" rows={3} value={pipeCatatan} onChange={e => setPipeCatatan(e.target.value)} />
-                <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-teal-500 text-white p-4 rounded-2xl font-bold shadow-lg">Simpan Pipeline</button>
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-gradient-to-r from-blue-600 to-teal-500 text-white p-4 rounded-2xl font-bold shadow-lg">{editIndexPipeline !== null ? "Simpan Perubahan Pipeline" : "Simpan Pipeline"}</button>
+                  {editIndexPipeline !== null && <button type="button" onClick={() => { setEditIndexPipeline(null); setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); }} className="bg-slate-800 px-6 rounded-2xl font-bold text-slate-300">Batal</button>}
+                </div>
               </form>
             </div>
 
@@ -699,6 +702,7 @@ export default function Home() {
                     <div>📅 Tayang: <strong>{pTayang}</strong></div>
                   </div>
                   <div className="flex justify-end gap-3 text-xs font-bold pt-1">
+                    <button onClick={() => { setEditIndexPipeline(i); setPipePerusahaan(pComp); setPipeProjek(pProjek); setPipeNilai(pNilai); setPipeTayang(pTayang); setPipeTahapan(pTahap); setPipeStatus(pStat); setPipeCatatan(p.LogCatatan || p.logcatatan || ""); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-blue-400">Edit</button>
                     <button onClick={() => handleDelete("Pipeline", i, pProjek)} className="text-rose-400">Hapus</button>
                   </div>
                 </div>
@@ -895,8 +899,8 @@ export default function Home() {
             <div className="bg-gradient-to-br from-slate-900 via-purple-950 to-indigo-950 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl border border-pink-500/20 space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (AI Context Match: {activeUser})</h3>
-                  <p className="text-xs text-pink-200 mt-1">Sistem menganalisis konteks suara dan profil Anda dari sheet Voice Profiles.</p>
+                  <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-cyan-300">✨ LISA - Voice Assistant (User Aktif: {activeUser})</h3>
+                  <p className="text-xs text-pink-200 mt-1">Sistem mengenali profil suara Anda secara dinamis dari Voice Profiles.</p>
                 </div>
                 <button onClick={createNewChatSession} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition">
                   <span>➕ Buat Sesi Baru</span>
