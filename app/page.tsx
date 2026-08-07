@@ -8,15 +8,27 @@ export default function Home() {
   });
   const [loading, setLoading] = useState(false);
   
-  // Dikembalikan ke "Alda" sebagai default, akan berubah otomatis jika mendeteksi user lain via AI
   const [activeUser, setActiveUser] = useState("Alda"); 
   const [checkingEproc, setCheckingEproc] = useState(false);
 
-  // Masukkan link gambar mentah (direct link) logo LISA Kak Alda di bawah ini:
-  const LOGO_URL = "https://api.dicebear.com/7.x/bottts/svg?seed=LISA&baseColor=ff69b4&backgroundColor=1e293b";
+  // 1. LOGO BARU: 
+  // Pastikan Kakak menyimpan gambar hitam-putih tadi di folder "public" dengan nama "logo.png"
+  const LOGO_URL = "/logo.png";
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
+
+  // Helper: Pendeteksi Kolom Dinamis (Mencegah error karena beda nama kolom di G-Sheets)
+  const findData = (obj: any, keywords: string[]) => {
+    if (!obj) return null;
+    const keys = Object.keys(obj);
+    for (let key of keys) {
+      if (keywords.some(kw => key.toLowerCase().includes(kw))) {
+        return obj[key];
+      }
+    }
+    return null;
+  };
 
   // State Perusahaan
   const [editIndexP, setEditIndexP] = useState<number | null>(null);
@@ -92,7 +104,7 @@ export default function Home() {
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [aiSearchResult, setAiSearchResult] = useState("");
 
-  // Load Data dengan Cache Buster
+  // Load Data
   const fetchData = async (useCache = true) => {
     const savedUser = localStorage.getItem("lisa_active_user");
     if (savedUser) setActiveUser(savedUser);
@@ -139,7 +151,7 @@ export default function Home() {
         if(chatSessions.length === 0) createNewChatSession();
       }
     } catch (e) { 
-      console.log("Menggunakan data cadangan lokal."); 
+      console.log("Gagal ambil data, menggunakan lokal."); 
     }
     setLoading(false);
   };
@@ -339,7 +351,6 @@ export default function Home() {
 
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
-
     detectUserFromVoiceContext(textToSend);
 
     const eprocReply = checkAndExecuteEprocCommand(textToSend);
@@ -493,12 +504,12 @@ export default function Home() {
   const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
 
   const filteredPengalaman = dataAll.pengalaman.filter((item: any) => {
-    const jenis = item.JenisIndustri || item.jenisindustri || "";
+    const jenis = findData(item, ['jenis', 'industri']) || "";
     const matchIndustri = filterIndustri === "Semua" || jenis === filterIndustri;
     const keyword = filterKeyword.toLowerCase();
-    const pekerjaan = item.NamaPekerjaan || item.namapekerjaan || "";
-    const perusahaan = item.NamaPerusahaan || item.namaperusahaan || "";
-    const ket = item.Keterangan || item.keterangan || "";
+    const pekerjaan = findData(item, ['pekerjaan', 'judul']) || "";
+    const perusahaan = findData(item, ['perusahaan', 'klien']) || "";
+    const ket = findData(item, ['keterangan', 'ket']) || "";
     const matchKeyword = !keyword || 
       pekerjaan.toLowerCase().includes(keyword) || 
       perusahaan.toLowerCase().includes(keyword) || 
@@ -506,18 +517,21 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
+  // 2. PIE CHART DATA FIX: Pendeteksian kolom super dinamis (Status dan Nilai)
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const val = parseRupiah(p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || p.Nilai || p.nilai || "0");
+    const rawNilai = findData(p, ['nilai', 'estimasi', 'harga', 'budget']) || "0";
+    const val = parseRupiah(rawNilai.toString());
     totalNilaiPipeline += val;
-    const rawStatus = p.Status || p.status || p.StatusPipeline || p.statuspipeline || p.StatusProjek || p.statusprojek || "Cold";
+
+    const rawStatus = findData(p, ['status']) || "Cold";
     const status = rawStatus.toString().trim().toLowerCase();
     
-    if (status === "hot") {
+    if (status.includes("hot")) {
       hotVal += val;
-    } else if (status === "warm") {
+    } else if (status.includes("warm")) {
       warmVal += val;
-    } else if (status === "gagal") {
+    } else if (status.includes("gagal") || status.includes("loss")) {
       gagalVal += val;
     } else {
       coldVal += val;
@@ -538,7 +552,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           <div className="flex items-center gap-4">
             
-            <div className="w-16 h-16 rounded-full bg-slate-900 border-2 border-pink-400/50 flex items-center justify-center shadow-2xl shrink-0 backdrop-blur-md overflow-hidden p-0.5">
+            <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-2xl shrink-0 overflow-hidden p-0">
               <img src={LOGO_URL} alt="LISA AI Logo" className="w-full h-full object-cover rounded-full" />
             </div>
 
@@ -591,16 +605,16 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {dataAll.perusahaan.map((item: any, i: number) => {
-                const namaComp = item.NamaPerusahaan || item.namaperusahaan || "";
-                const jenisComp = item.Jenis || item.jenis || "";
-                const statusR = item.StatusRekanan || item.statusrekanan || "Belum";
-                const pernahP = item.PernahAdaProjek || item.pernahadaprojek || "Belum";
-                const urlComp = item.URL || item.url || "#";
-                const badgeStatus = item.Badge || item.badge || "🟢 Tidak Ada Perubahan";
+                const namaComp = findData(item, ['namaperusahaan', 'perusahaan']) || "";
+                const jenisComp = findData(item, ['jenis']) || "";
+                const statusR = findData(item, ['statusrekanan', 'rekanan']) || "Belum";
+                const pernahP = findData(item, ['pernahadaprojek', 'riwayat', 'pernah']) || "Belum";
+                const urlComp = findData(item, ['url', 'link']) || "#";
+                const badgeStatus = findData(item, ['badge', 'status']) || "🟢 Tidak Ada Perubahan";
                 
-                // Menarik data terakhir cek dan total klik bulan ini
-                const terakhirCek = item.TerakhirDicek || item.terakhirdicek || item.TerakhirKlik || item.terakhirklik || "-";
-                const cekBulanIni = item.TotalKlikBulanIni || item.totalklikbulanini || item.TotalKlik || item.totalklik || item.KlikBulanIni || item.klikbulanini || "0";
+                // 3. EPROC DATA FIX: Membaca kolom secara dinamis meskipun Google Sheet mengubah nama header-nya
+                const terakhirCek = findData(item, ['terakhircek', 'terakhirdicek', 'terakhirklik', 'tglcek', 'tanggalcek', 'terakhir']) || "-";
+                const cekBulanIni = findData(item, ['bulanini', 'totalklik', 'totalcek', 'jumlahcek', 'berapakali', 'bulan']) || "0";
 
                 return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow-xl flex flex-col justify-between gap-4">
@@ -613,7 +627,6 @@ export default function Home() {
                       </div>
                     </div>
                     
-                    {/* UI Baru untuk Status, Terakhir Cek, dan Jumlah Cek Bulan Ini */}
                     <div className="space-y-2 text-xs font-medium text-slate-400 mt-4 bg-slate-800/40 p-3 rounded-xl border border-slate-800/80">
                       <div className="flex justify-between items-center border-b border-slate-700/50 pb-2">
                         <p>Status Rekanan: <strong className="text-pink-400">{statusR}</strong></p>
@@ -694,12 +707,12 @@ export default function Home() {
 
             <div className="space-y-5">
               {dataAll.pipeline.map((p: any, i: number) => {
-                const pComp = p.NamaPerusahaan || p.namaperusahaan || "";
-                const pProjek = p.NamaProjek || p.namaprojek || "";
-                const pNilai = p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || "-";
-                const pTayang = p.TanggalEstimasiTayangTender || p.tanggalestimasitayangtender || "-";
-                const pTahap = p.Tahapan || p.tahapan || "1. Eksplorasi";
-                const pStat = p.Status || p.status || p.StatusPipeline || p.statuspipeline || p.StatusProjek || p.statusprojek || "Cold";
+                const pComp = findData(p, ['perusahaan', 'klien']) || "";
+                const pProjek = findData(p, ['projek', 'pengadaan']) || "";
+                const pNilai = findData(p, ['nilai', 'estimasi', 'budget']) || "-";
+                const pTayang = findData(p, ['tayang', 'tanggal']) || "-";
+                const pTahap = findData(p, ['tahap']) || "1. Eksplorasi";
+                const pStat = findData(p, ['status']) || "Cold";
 
                 return (
                 <div key={i} className="p-6 rounded-[2rem] border border-slate-800 shadow-lg flex flex-col gap-4 bg-slate-900/90">
@@ -781,13 +794,13 @@ export default function Home() {
 
             <div className="space-y-4">
               {filteredPengalaman.map((item:any, i:number)=>{
-                const ePekerjaan = item.NamaPekerjaan || item.namapekerjaan || "";
-                const ePerusahaan = item.NamaPerusahaan || item.namaperusahaan || "";
-                const eJenis = item.JenisIndustri || item.jenisindustri || "";
-                const eMulai = item.TanggalMulai || item.tanggalmulai || "-";
-                const eDurasi = item.DurasiPekerjaan || item.durasipekerjaan || "-";
-                const eNilai = item.NilaiProjek || item.nilaiprojek || "-";
-                const eKet = item.Keterangan || item.keterangan || "";
+                const ePekerjaan = findData(item, ['pekerjaan', 'judul']) || "";
+                const ePerusahaan = findData(item, ['perusahaan', 'klien']) || "";
+                const eJenis = findData(item, ['jenis']) || "";
+                const eMulai = findData(item, ['mulai', 'tanggal']) || "-";
+                const eDurasi = findData(item, ['durasi']) || "-";
+                const eNilai = findData(item, ['nilai']) || "-";
+                const eKet = findData(item, ['keterangan', 'ket']) || "";
 
                 return (
                 <div key={i} className="p-6 bg-slate-900/90 rounded-3xl border border-slate-800 shadow flex flex-col md:flex-row justify-between gap-4">
@@ -853,10 +866,10 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dataAll.tenagaAhli?.map((a: any, i: number) => {
-                const aNama = a.Nama || a.nama || "";
-                const aPosisi = a.PosisiUtama || a.posisiutama || "";
-                const aSertif = a.Sertifikasi || a.sertifikasi || "";
-                const aPengalaman = a.Pengalaman || a.pengalaman || "";
+                const aNama = findData(a, ['nama']) || "";
+                const aPosisi = findData(a, ['posisi']) || "";
+                const aSertif = findData(a, ['sertifikasi']) || "";
+                const aPengalaman = findData(a, ['pengalaman']) || "";
 
                 return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow space-y-2">
@@ -899,10 +912,10 @@ export default function Home() {
             </div>
             <div className="space-y-4">
               {dataAll.rekanan.map((r: any, i: number) => {
-                const rNama = r.NamaRekanan || r.namarekanan || "";
-                const rHarga = r.HargaProduk || r.hargaproduk || "-";
-                const rPic = r.PIC || r.pic || "";
-                const rTelp = r.NoTelp || r.notelp || "-";
+                const rNama = findData(r, ['nama', 'rekanan']) || "";
+                const rHarga = findData(r, ['harga']) || "-";
+                const rPic = findData(r, ['pic']) || "";
+                const rTelp = findData(r, ['telp', 'kontak']) || "-";
 
                 return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow">
@@ -1019,9 +1032,9 @@ export default function Home() {
             </div>
             <div className="space-y-3">
               {dataAll.catatan.map((c: any, i: number) => {
-                const cTopik = c.Topik || c.topik || "";
-                const cTanggal = c.Tanggal || c.tanggal || "";
-                const cIsi = c.IsiCatatan || c.isicatatan || "";
+                const cTopik = findData(c, ['topik', 'judul']) || "";
+                const cTanggal = findData(c, ['tanggal', 'waktu']) || "";
+                const cIsi = findData(c, ['isi', 'catatan']) || "";
 
                 return (
                 <div key={i} className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow space-y-2">
