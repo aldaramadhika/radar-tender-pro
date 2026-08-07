@@ -7,8 +7,13 @@ export default function Home() {
     perusahaan: [], pengalaman: [], pipeline: [], catatan: [], rekaman: [], rekanan: [], tenagaAhli: [], riwayatAi: [], sampah: [], bedahRks: [], voiceProfiles: [] 
   });
   const [loading, setLoading] = useState(false);
+  
+  // Dikembalikan ke "Alda" sebagai default, akan berubah otomatis jika mendeteksi user lain via AI
   const [activeUser, setActiveUser] = useState("Alda"); 
   const [checkingEproc, setCheckingEproc] = useState(false);
+
+  // Masukkan link gambar mentah (direct link) logo LISA Kak Alda di bawah ini:
+  const LOGO_URL = "https://api.dicebear.com/7.x/bottts/svg?seed=LISA&baseColor=ff69b4&backgroundColor=1e293b";
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
@@ -87,7 +92,7 @@ export default function Home() {
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [aiSearchResult, setAiSearchResult] = useState("");
 
-  // Load Data & Bypass Cache jika baru update
+  // Load Data dengan Cache Buster
   const fetchData = async (useCache = true) => {
     const savedUser = localStorage.getItem("lisa_active_user");
     if (savedUser) setActiveUser(savedUser);
@@ -101,7 +106,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}?action=getAll`);
+      const res = await fetch(`${API_URL}?action=getAll&t=${new Date().getTime()}`);
       const json = await res.json();
       
       const freshData = {
@@ -264,7 +269,7 @@ export default function Home() {
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "updateStatus", rowIndex: index, tahapan, status }) });
     setTimeout(() => fetchData(false), 1000);
-    alert("Status pipeline berhasil diperbarui dan disinkronkan ke Google Sheets!");
+    alert("Status pipeline berhasil disinkronkan ke Google Sheets!");
   };
 
   const handleSavePengalaman = async (e: any) => {
@@ -368,7 +373,8 @@ export default function Home() {
 
     try {
       const historyContext = updatedMessages.map(m => `${m.role === 'user' ? 'User' : 'LISA'}: ${m.content}`).join("\n");
-      const promptText = `Anda adalah LISA, asisten AI sales profesional berkarakter feminin, cerdas, elegan, dan santun. Panggil pengguna dengan sapaan "Kak ${activeUser}". Berikan jawaban SINGKAT, PADAT, dan ELEGAN (maksimal 1-2 kalimat). Riwayat:\n${historyContext}`;
+      const sapaan = `Panggil pengguna dengan sapaan "Kak ${activeUser}". `;
+      const promptText = `Anda adalah LISA, asisten AI sales profesional berkarakter feminin, cerdas, elegan, dan santun. ${sapaan}Berikan jawaban SINGKAT, PADAT, dan ELEGAN (maksimal 1-2 kalimat). Riwayat:\n${historyContext}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -500,12 +506,12 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
-  // Kalkulasi Pi Chart yang disesuaikan agar akurat membaca status 'Gagal'
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const val = parseRupiah(p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || 0);
+    const val = parseRupiah(p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || p.Nilai || p.nilai || "0");
     totalNilaiPipeline += val;
-    const status = (p.Status || p.status || "").toString().trim().toLowerCase();
+    const rawStatus = p.Status || p.status || p.StatusPipeline || p.statuspipeline || p.StatusProjek || p.statusprojek || "Cold";
+    const status = rawStatus.toString().trim().toLowerCase();
     
     if (status === "hot") {
       hotVal += val;
@@ -531,11 +537,11 @@ export default function Home() {
       <header className="w-full bg-gradient-to-r from-pink-900 via-purple-900 to-indigo-950 text-white shadow-2xl py-8 px-6 mb-8 rounded-b-[3rem] border-b border-pink-500/30">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-pink-500/20 border-2 border-pink-400/50 flex items-center justify-center shadow-2xl shrink-0 backdrop-blur-md overflow-hidden p-1">
-              <svg viewBox="0 0 100 100" className="w-12 h-12 fill-pink-300 drop-shadow-md">
-                <path d="M50 10 C35 10 25 22 25 38 C25 45 28 52 33 58 L30 75 C30 82 38 88 50 88 C62 88 70 82 70 75 L67 58 C72 52 75 45 75 38 C75 22 65 10 50 10 Z M42 22 C45 22 47 25 47 28 C47 31 45 34 42 34 C39 34 37 31 37 28 C37 25 39 22 42 22 Z M58 22 C61 22 63 25 63 28 C63 31 61 34 58 34 C55 34 53 31 53 28 C53 25 55 22 58 22 Z M50 42 C54 42 57 45 57 49 C57 53 54 55 50 55 C46 55 43 53 43 49 C43 45 46 42 50 42 Z"/>
-              </svg>
+            
+            <div className="w-16 h-16 rounded-full bg-slate-900 border-2 border-pink-400/50 flex items-center justify-center shadow-2xl shrink-0 backdrop-blur-md overflow-hidden p-0.5">
+              <img src={LOGO_URL} alt="LISA AI Logo" className="w-full h-full object-cover rounded-full" />
             </div>
+
             <div>
               <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-md text-transparent bg-clip-text bg-gradient-to-r from-pink-300 via-purple-200 to-white">LISA</h1>
               <p className="text-xs text-pink-300 font-bold mt-1 tracking-widest uppercase">Lead Intelligence & Sales Assistant • User Aktif: <span className="text-white bg-pink-900/60 px-2.5 py-0.5 rounded-full border border-pink-500/30">{activeUser}</span></p>
@@ -591,6 +597,10 @@ export default function Home() {
                 const pernahP = item.PernahAdaProjek || item.pernahadaprojek || "Belum";
                 const urlComp = item.URL || item.url || "#";
                 const badgeStatus = item.Badge || item.badge || "🟢 Tidak Ada Perubahan";
+                
+                // Menarik data terakhir cek dan total klik bulan ini
+                const terakhirCek = item.TerakhirDicek || item.terakhirdicek || item.TerakhirKlik || item.terakhirklik || "-";
+                const cekBulanIni = item.TotalKlikBulanIni || item.totalklikbulanini || item.TotalKlik || item.totalklik || item.KlikBulanIni || item.klikbulanini || "0";
 
                 return (
                 <div key={i} className="bg-slate-900/90 p-6 rounded-[2rem] border border-slate-800 shadow-xl flex flex-col justify-between gap-4">
@@ -602,12 +612,21 @@ export default function Home() {
                         <span className="text-[10px] px-3 py-1 rounded-full font-black uppercase bg-pink-950 text-pink-300 border border-pink-500/30">{jenisComp}</span>
                       </div>
                     </div>
-                    <div className="space-y-1 text-xs font-medium text-slate-400">
-                      <p>Status Rekanan: <strong className="text-pink-400">{statusR}</strong></p>
-                      <p>Riwayat Projek: <strong className="text-purple-400">{pernahP}</strong></p>
+                    
+                    {/* UI Baru untuk Status, Terakhir Cek, dan Jumlah Cek Bulan Ini */}
+                    <div className="space-y-2 text-xs font-medium text-slate-400 mt-4 bg-slate-800/40 p-3 rounded-xl border border-slate-800/80">
+                      <div className="flex justify-between items-center border-b border-slate-700/50 pb-2">
+                        <p>Status Rekanan: <strong className="text-pink-400">{statusR}</strong></p>
+                        <p>Terakhir Cek: <strong className="text-slate-200">{terakhirCek}</strong></p>
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <p>Riwayat Projek: <strong className="text-purple-400">{pernahP}</strong></p>
+                        <p>Cek Bulan Ini: <strong className="text-slate-200">{cekBulanIni}x</strong></p>
+                      </div>
                     </div>
+
                   </div>
-                  <div className="flex flex-col gap-3 pt-4 border-t border-slate-800">
+                  <div className="flex flex-col gap-3 pt-4 border-t border-slate-800 mt-2">
                     <div className="flex justify-between items-center w-full">
                       <div className="flex gap-3 text-xs font-bold">
                         <button onClick={() => { setEditIndexP(i); setNamaP(namaComp); setJenisP(jenisComp); setUrlP(urlComp); setStatusRek(statusR); setPernahProj(pernahP); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-pink-400">Edit</button>
@@ -680,7 +699,7 @@ export default function Home() {
                 const pNilai = p.EstimasiNilaiProjek || p.estimasinilaiprojek || p.EstimasiNilai || p.estimasinilai || "-";
                 const pTayang = p.TanggalEstimasiTayangTender || p.tanggalestimasitayangtender || "-";
                 const pTahap = p.Tahapan || p.tahapan || "1. Eksplorasi";
-                const pStat = p.Status || p.status || "Cold";
+                const pStat = p.Status || p.status || p.StatusPipeline || p.statuspipeline || p.StatusProjek || p.statusprojek || "Cold";
 
                 return (
                 <div key={i} className="p-6 rounded-[2rem] border border-slate-800 shadow-lg flex flex-col gap-4 bg-slate-900/90">
@@ -690,10 +709,10 @@ export default function Home() {
                       <h3 className="font-extrabold text-lg text-white">{pProjek}</h3>
                     </div>
                     <div className="flex flex-wrap gap-2 items-center">
-                      <select id={`tahapan-${i}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={pTahap}>
+                      <select id={`tahapan-${i}`} key={`t-${pTahap}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={pTahap}>
                         <option>1. Eksplorasi</option><option>3. Penawaran</option><option>5. Tender Tayang</option><option>7. Menang</option>
                       </select>
-                      <select id={`status-${i}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={pStat}>
+                      <select id={`status-${i}`} key={`s-${pStat}`} className="bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-xl font-bold" defaultValue={pStat}>
                         <option value="Hot">🔥 Hot</option><option value="Warm">☀️ Warm</option><option value="Cold">❄️ Cold</option><option value="Gagal">❌ Gagal</option>
                       </select>
                       <button 
