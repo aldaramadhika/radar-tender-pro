@@ -11,13 +11,10 @@ export default function Home() {
   const [activeUser, setActiveUser] = useState("Alda"); 
   const [checkingEproc, setCheckingEproc] = useState(false);
 
-  // LOGO
   const LOGO_URL = "/logo.png";
-
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
-  // Helper: Pendeteksi Kolom Dinamis
   const findData = (obj: any, keywords: string[]) => {
     if (!obj) return null;
     const keys = Object.keys(obj);
@@ -37,7 +34,7 @@ export default function Home() {
   const [statusRek, setStatusRek] = useState("Belum");
   const [pernahProj, setPernahProj] = useState("Belum");
 
-  // State Pipeline
+  // State Pipeline (STRICT MODE + KOMPETITOR)
   const [editIndexPipeline, setEditIndexPipeline] = useState<number | null>(null);
   const [pipePerusahaan, setPipePerusahaan] = useState("");
   const [pipeProjek, setPipeProjek] = useState("");
@@ -46,6 +43,7 @@ export default function Home() {
   const [pipeTahapan, setPipeTahapan] = useState("1. Eksplorasi");
   const [pipeStatus, setPipeStatus] = useState("Cold");
   const [pipeCatatan, setPipeCatatan] = useState("");
+  const [pipeKompetitor, setPipeKompetitor] = useState("");
 
   // State Portofolio
   const [expPerusahaan, setExpPerusahaan] = useState("");
@@ -253,21 +251,36 @@ export default function Home() {
   const handleSavePipeline = async (e: any) => {
     e.preventDefault();
     const actionType = editIndexPipeline !== null ? "edit" : "add";
-    await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: actionType, rowIndex: editIndexPipeline, namaPerusahaan: pipePerusahaan, namaProjek: pipeProjek, estimasiNilai: pipeNilai, tanggalTayang: pipeTayang, tahapan: pipeTahapan, status: pipeStatus, logCatatan: pipeCatatan }) });
-    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeStatus("Cold"); setEditIndexPipeline(null); 
+    
+    await fetch(API_URL, { 
+      method: "POST", 
+      body: JSON.stringify({ 
+        type: "Pipeline", 
+        action: actionType, 
+        rowIndex: editIndexPipeline, 
+        namaPerusahaan: pipePerusahaan, 
+        namaProjek: pipeProjek, 
+        estimasiNilai: pipeNilai, 
+        tanggalTayang: pipeTayang, 
+        tahapan: pipeTahapan, 
+        status: pipeStatus, 
+        logCatatan: pipeCatatan,
+        kompetitor: pipeKompetitor // Tambahan field kompetitor dikirim ke Sheet
+      }) 
+    });
+    
+    setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeKompetitor(""); setPipeStatus("Cold"); setEditIndexPipeline(null); 
     setTimeout(() => fetchData(false), 1000);
   };
 
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
-    // Optimistic UI Update: Langsung ubah di layar tanpa nunggu sheet selesai
     const updatedPipeline = [...dataAll.pipeline];
     updatedPipeline[index].Tahapan = tahapan;
-    updatedPipeline[index].tahapan = tahapan; // antisipasi lowercase key
+    updatedPipeline[index].tahapan = tahapan;
     updatedPipeline[index].Status = status;
     updatedPipeline[index].status = status;
     setDataAll({ ...dataAll, pipeline: updatedPipeline });
 
-    // Sync ke G-Sheets di background
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "updateStatus", rowIndex: index, tahapan, status }) });
   };
 
@@ -506,11 +519,11 @@ export default function Home() {
   // Kalkulasi Pie Chart Pipeline
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const rawNilai = findData(p, ['nilai', 'budget', 'harga']) || p.EstimasiNilaiProjek || p.estimasinilaiprojek || "0";
+    const rawNilai = p.EstimasiNilai || p.estimasinilai || p.EstimasiNilaiProjek || p.estimasinilaiprojek || "0";
     const val = parseRupiah(rawNilai.toString());
     totalNilaiPipeline += val;
 
-    const rawStatus = findData(p, ['status']) || "Cold";
+    const rawStatus = p.Status || p.status || "Cold";
     const status = rawStatus.toString().trim().toLowerCase();
     
     if (status.includes("hot")) {
@@ -669,7 +682,7 @@ export default function Home() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-1">Nama Projek / Pengadaan:</label>
-                    <input type="text" placeholder="Contoh: Pengadaan Server" className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl" value={pipeProjek} onChange={e => setPipeProjek(e.target.value)} required />
+                    <input type="text" placeholder="Contoh: Pemutakhiran Disaster Recovery Plan" className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl" value={pipeProjek} onChange={e => setPipeProjek(e.target.value)} required />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -682,27 +695,35 @@ export default function Home() {
                     <option value="Hot">🔥 Hot</option><option value="Warm">☀️ Warm</option><option value="Cold">❄️ Cold</option><option value="Gagal">❌ Gagal</option>
                   </select>
                 </div>
-                <textarea placeholder="Catatan singkat..." className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl" rows={3} value={pipeCatatan} onChange={e => setPipeCatatan(e.target.value)} />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <textarea placeholder="Catatan singkat (kunjungan, dll)..." className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl" rows={3} value={pipeCatatan} onChange={e => setPipeCatatan(e.target.value)} />
+                  <div className="flex flex-col gap-2">
+                      <label className="text-xs font-bold text-slate-400">Kompetitor / Pemenang (Isi Jika Kalah):</label>
+                      <input type="text" placeholder="Contoh: PT Telkom, dsb..." className="w-full p-4 bg-slate-800 border border-slate-700 text-white rounded-2xl" value={pipeKompetitor} onChange={e => setPipeKompetitor(e.target.value)} />
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <button type="submit" className="flex-1 bg-gradient-to-r from-blue-600 to-teal-500 text-white p-4 rounded-2xl font-bold shadow-lg">{editIndexPipeline !== null ? "Simpan Perubahan Pipeline" : "Simpan Pipeline"}</button>
-                  {editIndexPipeline !== null && <button type="button" onClick={() => { setEditIndexPipeline(null); setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); }} className="bg-slate-800 px-6 rounded-2xl font-bold text-slate-300">Batal</button>}
+                  {editIndexPipeline !== null && <button type="button" onClick={() => { setEditIndexPipeline(null); setPipePerusahaan(""); setPipeProjek(""); setPipeNilai(""); setPipeTayang(""); setPipeCatatan(""); setPipeKompetitor(""); }} className="bg-slate-800 px-6 rounded-2xl font-bold text-slate-300">Batal</button>}
                 </div>
               </form>
             </div>
 
             <div className="space-y-5">
               {dataAll.pipeline.map((p: any, i: number) => {
-                const pComp = findData(p, ['perusahaan', 'klien']) || "";
-                const pProjek = findData(p, ['projek', 'pengadaan']) || "";
+                const pComp = p.NamaPerusahaan || p.namaperusahaan || "";
+                const pProjek = p.NamaProjek || p.namaprojek || "";
+                let pNilai = p.EstimasiNilai || p.estimasinilai || p.EstimasiNilaiProjek || "-";
+                let pTayang = p.TanggalTayang || p.tanggaltayang || p.TanggalEstimasiTayangTender || "-";
+                const pTahap = p.Tahapan || p.tahapan || "1. Eksplorasi";
+                const pStat = p.Status || p.status || "Cold";
+                const pCatatan = p.LogCatatan || p.logcatatan || p.LogAktivitasVisit || "";
                 
-                // FIXED: Memisahkan keyword Nilai dan Tanggal dengan ketat agar tidak tertukar
-                let pNilai = findData(p, ['nilai', 'budget', 'harga']) || p.EstimasiNilaiProjek || p.estimasinilaiprojek || "-";
-                let pTayang = findData(p, ['tayang', 'tanggal', 'date', 'deadline']) || p.TanggalEstimasiTayangTender || p.tanggalestimasitayangtender || "-";
-                
-                const pTahap = findData(p, ['tahap']) || "1. Eksplorasi";
-                const pStat = findData(p, ['status']) || "Cold";
+                // Menarik data Kompetitor
+                const pLawan = p.Kompetitor || p.kompetitor || p.KompetitorUtama || p.kompetitorutama || "";
 
-                // Membersihkan format tanggal ISO (T17:00:00.000Z) agar tampilannya rapi
                 if (typeof pTayang === 'string' && pTayang.includes('T')) {
                   pTayang = pTayang.split('T')[0];
                 }
@@ -729,12 +750,21 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+                  
                   <div className="grid grid-cols-2 gap-3 text-xs bg-slate-800/50 p-3 rounded-xl border border-slate-800">
                     <div>💰 Nilai: <strong className="text-emerald-400">{pNilai}</strong></div>
                     <div>📅 Tayang: <strong>{pTayang}</strong></div>
                   </div>
+
+                  {/* Highlight khusus untuk Pemenang Kompetitor jika Gagal */}
+                  {pLawan && (
+                    <div className="text-[11px] bg-rose-950/50 p-3 rounded-xl border border-rose-500/30 text-rose-300 font-bold mt-1">
+                      🥷 Pemenang / Kompetitor: {pLawan}
+                    </div>
+                  )}
+
                   <div className="flex justify-end gap-3 text-xs font-bold pt-1">
-                    <button onClick={() => { setEditIndexPipeline(i); setPipePerusahaan(pComp); setPipeProjek(pProjek); setPipeNilai(pNilai); setPipeTayang(pTayang); setPipeTahapan(pTahap); setPipeStatus(pStat); setPipeCatatan(p.LogCatatan || p.logcatatan || ""); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-blue-400">Edit</button>
+                    <button onClick={() => { setEditIndexPipeline(i); setPipePerusahaan(pComp); setPipeProjek(pProjek); setPipeNilai(pNilai); setPipeTayang(pTayang); setPipeTahapan(pTahap); setPipeStatus(pStat); setPipeCatatan(pCatatan); setPipeKompetitor(pLawan); window.scrollTo({top:0, behavior:'smooth'}); }} className="text-blue-400">Edit</button>
                     <button onClick={() => handleDelete("Pipeline", i, pProjek)} className="text-rose-400">Hapus</button>
                   </div>
                 </div>
