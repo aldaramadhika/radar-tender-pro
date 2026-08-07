@@ -11,14 +11,13 @@ export default function Home() {
   const [activeUser, setActiveUser] = useState("Alda"); 
   const [checkingEproc, setCheckingEproc] = useState(false);
 
-  // 1. LOGO BARU: 
-  // Pastikan Kakak menyimpan gambar hitam-putih tadi di folder "public" dengan nama "logo.png"
+  // LOGO
   const LOGO_URL = "/logo.png";
 
   const API_URL = "https://script.google.com/macros/s/AKfycbyvh-_d9WtyupB5Xx1_B_iBRbSHU4RzlHvaWFPiP8MEjcljXyGiFksMgp6rjW18LCNn/exec";
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
-  // Helper: Pendeteksi Kolom Dinamis (Mencegah error karena beda nama kolom di G-Sheets)
+  // Helper: Pendeteksi Kolom Dinamis
   const findData = (obj: any, keywords: string[]) => {
     if (!obj) return null;
     const keys = Object.keys(obj);
@@ -67,7 +66,7 @@ export default function Home() {
   const [rekTelp, setRekTelp] = useState("");
   const [rekKet, setRekKet] = useState("");
 
-  // State Tenaga Ahli & CV Generator
+  // State Tenaga Ahli
   const [editIndexAhli, setEditIndexAhli] = useState<number | null>(null);
   const [ahliNama, setAhliNama] = useState("");
   const [ahliPosisi, setAhliPosisi] = useState("");
@@ -86,7 +85,7 @@ export default function Home() {
   const [catTopik, setCatTopik] = useState("");
   const [catIsi, setCatIsi] = useState("");
 
-  // State AI Chat & Voice
+  // State AI Chat
   const [chatSessions, setChatSessions] = useState<{ id: string; title: string; messages: { role: string; content: string }[] }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [chatInput, setChatInput] = useState("");
@@ -165,25 +164,6 @@ export default function Home() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatSessions, currentSessionId, chatLoading]);
-
-  const detectUserFromVoiceContext = (transcript: string) => {
-    const lower = transcript.toLowerCase();
-    const profiles = dataAll.voiceProfiles || [];
-
-    for (let p of profiles) {
-      const namaUser = p.NamaUser || p.namauser || p.Nama || p.nama;
-      const signatureKeywords = (p.SignatureKeywords || p.signaturekeywords || "").toLowerCase();
-
-      if (namaUser) {
-        if (lower.includes(namaUser.toLowerCase()) || (signatureKeywords && signatureKeywords.split(",").some((kw: string) => kw.trim() && lower.includes(kw.trim())))) {
-          setActiveUser(namaUser);
-          localStorage.setItem("lisa_active_user", namaUser);
-          return namaUser;
-        }
-      }
-    }
-    return activeUser;
-  };
 
   const runAutoEprocCheck = async (isManual = true) => {
     if (isManual) setCheckingEproc(true);
@@ -279,9 +259,16 @@ export default function Home() {
   };
 
   const handleUpdatePipelineInline = async (index: number, tahapan: string, status: string) => {
+    // Optimistic UI Update: Langsung ubah di layar tanpa nunggu sheet selesai
+    const updatedPipeline = [...dataAll.pipeline];
+    updatedPipeline[index].Tahapan = tahapan;
+    updatedPipeline[index].tahapan = tahapan; // antisipasi lowercase key
+    updatedPipeline[index].Status = status;
+    updatedPipeline[index].status = status;
+    setDataAll({ ...dataAll, pipeline: updatedPipeline });
+
+    // Sync ke G-Sheets di background
     await fetch(API_URL, { method: "POST", body: JSON.stringify({ type: "Pipeline", action: "updateStatus", rowIndex: index, tahapan, status }) });
-    setTimeout(() => fetchData(false), 1000);
-    alert("Status pipeline berhasil disinkronkan ke Google Sheets!");
   };
 
   const handleSavePengalaman = async (e: any) => {
@@ -351,7 +338,6 @@ export default function Home() {
 
   const processAndSendChat = async (textToSend: string) => {
     if (!textToSend.trim()) return;
-    detectUserFromVoiceContext(textToSend);
 
     const eprocReply = checkAndExecuteEprocCommand(textToSend);
     if (eprocReply) {
@@ -504,7 +490,7 @@ export default function Home() {
   const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
 
   const filteredPengalaman = dataAll.pengalaman.filter((item: any) => {
-    const jenis = findData(item, ['jenis', 'industri']) || "";
+    const jenis = findData(item, ['jenis']) || "";
     const matchIndustri = filterIndustri === "Semua" || jenis === filterIndustri;
     const keyword = filterKeyword.toLowerCase();
     const pekerjaan = findData(item, ['pekerjaan', 'judul']) || "";
@@ -517,10 +503,10 @@ export default function Home() {
     return matchIndustri && matchKeyword;
   });
 
-  // 2. PIE CHART DATA FIX: Pendeteksian kolom super dinamis (Status dan Nilai)
+  // Kalkulasi Pie Chart Pipeline
   let totalNilaiPipeline = 0, hotVal = 0, warmVal = 0, coldVal = 0, gagalVal = 0;
   dataAll.pipeline.forEach((p: any) => {
-    const rawNilai = findData(p, ['nilai', 'estimasi', 'harga', 'budget']) || "0";
+    const rawNilai = findData(p, ['nilai', 'budget', 'harga']) || p.EstimasiNilaiProjek || p.estimasinilaiprojek || "0";
     const val = parseRupiah(rawNilai.toString());
     totalNilaiPipeline += val;
 
@@ -612,7 +598,6 @@ export default function Home() {
                 const urlComp = findData(item, ['url', 'link']) || "#";
                 const badgeStatus = findData(item, ['badge', 'status']) || "🟢 Tidak Ada Perubahan";
                 
-                // 3. EPROC DATA FIX: Membaca kolom secara dinamis meskipun Google Sheet mengubah nama header-nya
                 const terakhirCek = findData(item, ['terakhircek', 'terakhirdicek', 'terakhirklik', 'tglcek', 'tanggalcek', 'terakhir']) || "-";
                 const cekBulanIni = findData(item, ['bulanini', 'totalklik', 'totalcek', 'jumlahcek', 'berapakali', 'bulan']) || "0";
 
@@ -709,10 +694,18 @@ export default function Home() {
               {dataAll.pipeline.map((p: any, i: number) => {
                 const pComp = findData(p, ['perusahaan', 'klien']) || "";
                 const pProjek = findData(p, ['projek', 'pengadaan']) || "";
-                const pNilai = findData(p, ['nilai', 'estimasi', 'budget']) || "-";
-                const pTayang = findData(p, ['tayang', 'tanggal']) || "-";
+                
+                // FIXED: Memisahkan keyword Nilai dan Tanggal dengan ketat agar tidak tertukar
+                let pNilai = findData(p, ['nilai', 'budget', 'harga']) || p.EstimasiNilaiProjek || p.estimasinilaiprojek || "-";
+                let pTayang = findData(p, ['tayang', 'tanggal', 'date', 'deadline']) || p.TanggalEstimasiTayangTender || p.tanggalestimasitayangtender || "-";
+                
                 const pTahap = findData(p, ['tahap']) || "1. Eksplorasi";
                 const pStat = findData(p, ['status']) || "Cold";
+
+                // Membersihkan format tanggal ISO (T17:00:00.000Z) agar tampilannya rapi
+                if (typeof pTayang === 'string' && pTayang.includes('T')) {
+                  pTayang = pTayang.split('T')[0];
+                }
 
                 return (
                 <div key={i} className="p-6 rounded-[2rem] border border-slate-800 shadow-lg flex flex-col gap-4 bg-slate-900/90">
